@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-24",
+  "note": "游戏运行库目录（数据驱动）——新增组件 = 在这里加一条记录，不写代码。detect 规则类型：registry/file/command/winsxs；install：winget 优先，download 兜底，都没有则给 manual 链接。",
+  "components": [
+    {
+      "id": "vc2022-x64",
+      "name": "Visual C++ 2015–2022 运行库（64位）",
+      "short": "VC++ 2022 x64",
+      "category": "vcredist",
+      "importance": "essential",
+      "why": "绝大多数现代游戏与工具的基础依赖",
+      "sizeMb": 25,
+      "detect": [
+        { "type": "registry", "view": "x64", "key": "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X64", "value": "Installed", "equals": 1, "versionValue": "Version", "minVersion": "14.30" }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2015+.x64",
+        "download": { "url": "https://aka.ms/vs/17/release/vc_redist.x64.exe", "args": "/install /quiet /norestart" }
+      }
+    },
+    {
+      "id": "vc2022-x86",
+      "name": "Visual C++ 2015–2022 运行库（32位）",
+      "short": "VC++ 2022 x86",
+      "category": "vcredist",
+      "importance": "essential",
+      "why": "32位游戏与启动器必需，64位系统也要装",
+      "sizeMb": 20,
+      "detect": [
+        { "type": "registry", "view": "x64", "key": "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X86", "value": "Installed", "equals": 1, "versionValue": "Version", "minVersion": "14.30" }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2015+.x86",
+        "download": { "url": "https://aka.ms/vs/17/release/vc_redist.x86.exe", "args": "/install /quiet /norestart" }
+      }
+    },
+    {
+      "id": "vc2013-x64",
+      "name": "Visual C++ 2013 运行库（64位）",
+      "short": "VC++ 2013 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2014–2017 年间大量游戏依赖（老滚5、GTA5 时期）",
+      "sizeMb": 8,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\System32\\msvcr120.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2013.x64" }
+    },
+    {
+      "id": "vc2013-x86",
+      "name": "Visual C++ 2013 运行库（32位）",
+      "short": "VC++ 2013 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 8,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\SysWOW64\\msvcr120.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2013.x86" }
+    },
+    {
+      "id": "vc2012-x64",
+      "name": "Visual C++ 2012 运行库（64位）",
+      "short": "VC++ 2012 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2012–2014 年游戏常用",
+      "sizeMb": 8,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\System32\\msvcr110.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2012.x64" }
+    },
+    {
+      "id": "vc2012-x86",
+      "name": "Visual C++ 2012 运行库（32位）",
+      "short": "VC++ 2012 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 8,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\SysWOW64\\msvcr110.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2012.x86" }
+    },
+    {
+      "id": "vc2010-x64",
+      "name": "Visual C++ 2010 运行库（64位）",
+      "short": "VC++ 2010 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2010–2012 年游戏常用（巫师2、传送门2 时代）",
+      "sizeMb": 6,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\System32\\msvcr100.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2010.x64" }
+    },
+    {
+      "id": "vc2010-x86",
+      "name": "Visual C++ 2010 运行库（32位）",
+      "short": "VC++ 2010 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 6,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\SysWOW64\\msvcr100.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2010.x86" }
+    },
+    {
+      "id": "vc2008-x64",
+      "name": "Visual C++ 2008 运行库（64位）",
+      "short": "VC++ 2008 x64",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "更早年代游戏（2008–2010）",
+      "sizeMb": 5,
+      "detect": [
+        { "type": "winsxs", "pattern": "msvcr90.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2008.x64" }
+    },
+    {
+      "id": "vc2008-x86",
+      "name": "Visual C++ 2008 运行库（32位）",
+      "short": "VC++ 2008 x86",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "更早年代 32 位游戏",
+      "sizeMb": 5,
+      "detect": [
+        { "type": "winsxs", "pattern": "msvcr90.dll" }
+      ],
+      "install": { "winget": "Microsoft.VCRedist.2008.x86" }
+    },
+    {
+      "id": "netfx48",
+      "name": ".NET Framework 4.8",
+      "short": ".NET 4.8",
+      "category": "dotnet",
+      "importance": "essential",
+      "why": "大量游戏工具与启动器（MOD 管理器、汉化补丁工具）依赖",
+      "sizeMb": 60,
+      "detect": [
+        { "type": "registry", "view": "x64", "key": "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full", "value": "Release", "minInt": 528040 }
+      ],
+      "install": {
+        "download": { "url": "https://go.microsoft.com/fwlink/?linkid=2088631", "args": "/q /norestart", "name": "ndp48-web.exe" }
+      }
+    },
+    {
+      "id": "netdesktop8",
+      "name": ".NET 桌面运行时 8",
+      "short": ".NET 8 Desktop",
+      "category": "dotnet",
+      "importance": "common",
+      "why": "新式工具与启动器（部分 MOD 管理器、游戏工具箱）依赖",
+      "sizeMb": 60,
+      "detect": [
+        { "type": "command", "cmd": "dotnet", "args": "--list-runtimes", "contains": "Microsoft.WindowsDesktop.App 8." }
+      ],
+      "install": {
+        "winget": "Microsoft.DotNet.DesktopRuntime.8",
+        "download": { "url": "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "args": "/install /quiet /norestart" }
+      }
+    },
+    {
+      "id": "dx-jun2010",
+      "name": "DirectX 旧组件（June 2010）",
+      "short": "DirectX 9.0c 补件",
+      "category": "directx",
+      "importance": "essential",
+      "why": "DX9/老游戏缺 D3DX9、XAudio、XACT 报的错全是它",
+      "sizeMb": 95,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\System32\\D3DX9_43.dll" },
+        { "type": "file", "path": "%WINDIR%\\System32\\X3DAudio1_7.dll" },
+        { "type": "file", "path": "%WINDIR%\\SysWOW64\\D3DX9_43.dll" }
+      ],
+      "install": {
+        "download": { "url": "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe", "args": "/Q" }
+      }
+    },
+    {
+      "id": "xna4",
+      "name": "XNA Framework 4.0",
+      "short": "XNA 4.0",
+      "category": "middleware",
+      "importance": "common",
+      "why": "星露谷物语、泰拉瑞亚、FEZ 等独立游戏必需",
+      "sizeMb": 7,
+      "detect": [
+        { "type": "registry", "view": "x64", "key": "SOFTWARE\\Microsoft\\XNA\\Framework\\v4.0", "value": "Installed", "equals": 1 }
+      ],
+      "install": {
+        "download": { "url": "https://download.microsoft.com/download/A/C/2/AC2C903B-E6E8-42C2-9FD7-BEBAC362A930/xnafx40_redist.msi", "args": "msiexec", "msiArgs": "/i {file} /qn /norestart" }
+      }
+    },
+    {
+      "id": "openal",
+      "name": "OpenAL 音频库",
+      "short": "OpenAL",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "Minecraft、部分独立游戏与模拟器需要",
+      "sizeMb": 1,
+      "detect": [
+        { "type": "file", "path": "%WINDIR%\\System32\\OpenAL32.dll" },
+        { "type": "file", "path": "%WINDIR%\\SysWOW64\\OpenAL32.dll", "or": true }
+      ],
+      "install": {
+        "manual": { "url": "https://www.openal.org/downloads/", "label": "OpenAL 官网" }
+      }
+    },
+    {
+      "id": "physx",
+      "name": "NVIDIA PhysX 系统软件",
+      "short": "PhysX",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "部分老 3A（蝙蝠侠、无主之地、镜之边缘）需要独立 PhysX",
+      "sizeMb": 30,
+      "detect": [
+        { "type": "file", "path": "%ProgramFiles(x86)%\\NVIDIA Corporation\\PhysX\\Common\\PhysXCore.dll", "or": true },
+        { "type": "file", "path": "%ProgramFiles%\\NVIDIA Corporation\\PhysX\\Common\\PhysXCore.dll" }
+      ],
+      "install": {
+        "manual": { "url": "https://www.nvidia.com/en-us/drivers/physx/physx-9-21-0713-driver/", "label": "NVIDIA 官网" }
+      }
+    }
+  ]
+}
