@@ -97,6 +97,7 @@ class S {
       'doneAll': '装机完毕',
       'doneOk': '本次装齐 {ok} / {total} 项 · 日志已留存',
       'doneNone': '运行库一件不缺',
+      'failDl': '官方下载',
       // —— 加载失败 ——
       'loadFail': '组件目录加载失败',
       // —— 安装引擎细节 ——
@@ -176,6 +177,7 @@ class S {
       'doneAll': 'All done',
       'doneOk': '{ok} of {total} fixed · logs saved',
       'doneNone': 'Nothing missing',
+      'failDl': 'Official download',
       // —— load fail ——
       'loadFail': 'Catalog failed to load',
       // —— install engine details ——

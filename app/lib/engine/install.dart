@@ -76,8 +76,9 @@ class Installer {
         if (file != null) {
           yield InstallEvent(c.id, 'installing', S.of('evInstalling'));
           final code = d.msiArgs != null
-              ? await _run('msiexec',
-                  d.msiArgs!.replaceAll('{file}', '"${file.path}"').split(' '))
+              ? await _runCmdLine(
+                  'msiexec ${d.msiArgs!.replaceAll('{file}', '"${file.path}"')}',
+                  log)
               : await _run(file.path, d.args.isEmpty ? [] : d.args.split(' '));
           outcome = _mapExit(code);
           detail = S.fmt('evPkgExit', {'code': code});

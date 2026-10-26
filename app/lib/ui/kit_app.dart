@@ -48,6 +48,8 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   final Set<String> _repairSel = {};
   // 组级勾选：整组取消参与「一键」（清单仍列出状态）
   bool _incRt = true, _incSt = true;
+  // 安装失败项：完成屏展示官方下载兜底链接
+  final Set<String> _failIds = {};
 
   @override
   void initState() {
@@ -176,7 +178,7 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
     if (orb.phase == OrbPhase.scanning) return;
     _results.clear();
     setState(() { _current = ''; _detail = ''; _queue = [];
-        _repairMode = false; _repairSel.clear();
+        _repairMode = false; _repairSel.clear(); _failIds.clear();
         _incRt = true; _incSt = true; });
     orb.toScan();
     await Detector.scan(_catalog!,
@@ -220,7 +222,7 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   Future<void> _startInstall(List<Component> items) async {
     if (_installing) return;
     setState(() { _installing = true; _queue = items; _detail = '';
-        _repairMode = false; _repairSel.clear(); });
+        _repairMode = false; _repairSel.clear(); _failIds.clear(); });
     orb.toInstalling(items.map((c) => c.id).toList());
     if (widget.demoInstall || widget.demoReport) {
       await _fakeInstall(items);
@@ -237,7 +239,10 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
             if (e.detail.isNotEmpty) _detail = e.detail;
           });
           if (e.phase == 'done') orb.markInstalled(e.componentId, true);
-          if (e.phase == 'failed') orb.markInstalled(e.componentId, false);
+          if (e.phase == 'failed') {
+            orb.markInstalled(e.componentId, false);
+            _failIds.add(e.componentId);
+          }
         }
       } catch (e) {
         // 安装流中断（进程/日志/权限异常）：仍落到完成屏，failCount 记未完成的
@@ -788,6 +793,11 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
               ? S.of('doneNone')
               : S.fmt('doneOk', {'ok': orb.okCount, 'total': _queue.length}),
           style: KT.ui.copyWith(fontSize: 13.5, color: K.fg2))),
+      if (failed != 0) ...[
+        const SizedBox(height: 14),
+        for (final id in _failIds)
+          _failRow(id),
+      ],
       const SizedBox(height: 24),
       EnterAnim(index: 2, child: Row(children: [
         HaloLink(S.of('rescan'), onTap: _scan),
@@ -796,6 +806,24 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
         HaloLink(S.of('exit'), onTap: () => exit(0)),
       ])),
     ]);
+  }
+
+  /// 失败行：组件名 + 官方下载/指引链接（autoInstall 失败也有兜底入口）
+  Widget _failRow(String id) {
+    final c = _catalog?.components.firstWhere((e) => e.id == id,
+        orElse: () => _catalog!.components.first);
+    if (c == null) return const SizedBox.shrink();
+    final url = c.install.download?.url ?? c.install.manual?.url;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Expanded(child: Text(c.name,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: KT.ui.copyWith(fontSize: 13, color: K.fg2))),
+        if (url != null)
+          HaloLink(S.of('failDl'), onTap: () => _openUrl(url)),
+      ]),
+    );
   }
 
   // ═══════════════ 关于作者 · 遮罩弹层 ═══════════════
