@@ -36,7 +36,7 @@ dependencies:
   win32_registry: ^2.1.0
   http: ^1.2.0
   path: ^1.9.0
-  window_manager: ^0.5.1
+  # window_manager: ^0.5.1  # 无边框窗——需开发者模式 symlink，暂用系统标题栏
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +62,12 @@ flutter:
 
   assets:
     - catalog/runtimes.json
+    - assets/sculpt_a.png
+
+  fonts:
+    - family: NotoSerifCJK
+      fonts:
+        - asset: assets/fonts/NotoSerifCJKsc-Black.otf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "wanji_kit" "\0"
+            VALUE "CompanyName", "Wanji" "\0"
+            VALUE "FileDescription", "Wanji Kit - Windows 游戏运行环境检测与安装工具" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "wanji_kit" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Wanji. All rights reserved." "\0"
             VALUE "OriginalFilename", "wanji_kit.exe" "\0"
-            VALUE "ProductName", "wanji_kit" "\0"
+            VALUE "ProductName", "Wanji Kit · 玩机装机工具" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

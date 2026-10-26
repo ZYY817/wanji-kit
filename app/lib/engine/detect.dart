@@ -1,7 +1,7 @@
 // 检测引擎：执行 catalog 里的 detect 规则。规则间默认 AND；or:true 与前一条 OR。
 import 'dart:io';
 import 'package:win32_registry/win32_registry.dart';
-import 'catalog.dart';
+import 'catalog_model.dart';
 
 class Detector {
   /// 扫描全部组件：onProgress 在某项开始检测前触发，onResult 在每项完成时触发。
@@ -72,12 +72,15 @@ class Detector {
   }
 
   static _Hit _registry(DetectRule r) {
-    final evidence = 'HKLM\\${r.key}';
+    final hkcu = r.hive == 'hkcu';
+    final evidence = '${hkcu ? 'HKCU' : 'HKLM'}\\${r.key}';
     RegistryKey? key;
     try {
-      key = Registry.openPath(RegistryHive.localMachine, path: r.key!);
+      key = Registry.openPath(
+          hkcu ? RegistryHive.currentUser : RegistryHive.localMachine,
+          path: r.key!);
     } catch (_) {
-      return _Hit(false, evidence); // 键不存在 = 未安装
+      return _Hit(false, evidence); // 键不存在 = 未安装/未开启
     }
     try {
       int? intOf(RegistryValue? v) =>

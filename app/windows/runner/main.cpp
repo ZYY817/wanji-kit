@@ -27,7 +27,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"wanji_kit", origin, size)) {
+  if (!window.Create(L"wanji_kit \u00B7 \u73A9\u673A\u88C5\u673A\u5DE5\u5177", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

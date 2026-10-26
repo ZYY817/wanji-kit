@@ -5,3 +5,6 @@ app/.flutter-plugins*
 app/windows/flutter/ephemeral/
 flutter.zip
 *.log
+
+# 调试截图（仓库根目录）
+/*.png

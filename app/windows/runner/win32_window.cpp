@@ -15,16 +15,20 @@ namespace {
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1
+#define DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 19
+#endif
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
-
-/// Registry key for app theme preference.
-///
-/// A value of 0 indicates apps should use dark mode. A non-zero or missing
-/// value indicates apps should use light mode.
-constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
-  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
-constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -187,6 +191,15 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_GETMINMAXINFO: {
+      // Enforce the 890x560 minimum layout (DIP -> physical px via DPI).
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      const UINT dpi = GetDpiForWindow(hwnd);
+      info->ptMinTrackSize.x = MulDiv(890, dpi, 96);
+      info->ptMinTrackSize.y = MulDiv(560, dpi, 96);
+      return 0;
+    }
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
@@ -273,16 +286,21 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
-
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+  // The app is now a light cream space: dark mode OFF so caption text/icons
+  // render dark, and on Win11 (22000+) caption/border use the same cream as
+  // the client top area so title bar and page read as one strip.
+  // #F0ECE3 = measured average of the client area's top 32 px (sculpt
+  // painter bgTop #F1EDE5 + top-left warm glow, text pixels excluded).
+  // On older systems failed DwmSetWindowAttribute calls just return errors.
+  BOOL dark = FALSE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &dark, sizeof(dark));
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1,
+                        &dark, sizeof(dark));
+  const COLORREF caption = RGB(0xF0, 0xEC, 0xE3);  // measured top-strip avg
+  const COLORREF text = RGB(0x1A, 0x18, 0x15);     // K.ink
+  const COLORREF border = RGB(0xF0, 0xEC, 0xE3);   // same color, no seam
+  DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
+  DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text, sizeof(text));
+  DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border, sizeof(border));
 }

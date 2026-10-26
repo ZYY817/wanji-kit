@@ -1,32 +1,61 @@
 # 玩机装机工具（Wanji Kit）
 
-Windows 游戏运行环境一键检测与安装工具。**只装官方源、每步可验证、单文件 exe、零依赖**。
+Windows 游戏运行环境一键检测与安装工具。Flutter Windows 桌面应用，奶油雕塑风格单窗口 UI。
 
-- 检测：VC++ 2005–2022（x86+x64）、.NET Framework 4.8、.NET 8 桌面运行时、DirectX June 2010 旧组件、XNA 4.0、OpenAL、PhysX
-- 安装：winget 优先 → 微软官方直链兜底 → 手动链接；装完自动重扫验证
-- 日志：`%APPDATA%\WanjiKit\logs\`（装了什么 / 从哪下的 / 退出码，全留痕）
-- 权限：扫描不需要管理员；仅在「一键装齐」时弹一次 UAC
+## 功能现状
 
-## 开发
+- **检测**：26 项运行库组件（VC++ 2005–2022 x86/x64、.NET Framework 3.5/4.8、.NET Desktop Runtime 6/8/9、DirectX Jun 2010、DirectPlay、XNA 4.0、OpenAL、PhysX、WebView2、Java 21、UE4 前置组件等）。注册表 / 文件 / 命令 / WinSxS 四类规则，全部只读，约 10–30 秒。
+- **安装**：点「安装 N 项」→ 弹一次 UAC 自我提权重启（`--install=` 续装）→ winget 优先 → 微软官方直链兜底 → 装完逐项重扫验证。失败项在完成屏计入「部分未过」。
+- **手动项**：无自动渠道的组件（DirectPlay / Media Feature Pack / OpenAL / PhysX / .NET 3.5 / UE4 前置）在结果清单标「需手动」，点击行用系统协议处理程序打开官方指引页。
+- **日志**：JSONL 写 `%APPDATA%\WanjiKit\logs\<时间戳>.log`（装了什么 / 来源 / 退出码）。完成屏「打开日志」打开日志目录。
+- **目录热更**：exe 同级放 `catalog/runtimes.json` 优先于内置 asset 加载，改组件不用重编。
+
+## 运行要求
+
+- Windows 10 / 11 x64（Win11 上标题栏与界面同色无缝；Win10 用系统默认标题栏）
+- winget 可选：没有 winget 时自动走官方直链；装运行库需要管理员（届时会弹 UAC）
+
+## 构建
 
 ```bash
 # 环境：Flutter SDK（F:\flutter）+ VS Build Tools（C++ 负载）
 cd app
 flutter pub get
-flutter analyze
-flutter run -d windows      # 调试运行
-flutter build windows       # 产出 exe → build\windows\x64\runner\Release\
+flutter analyze                  # 当前零 issue
+flutter run -d windows           # 调试运行
+flutter build windows --release  # 产出 → app\build\windows\x64\runner\Release\
 ```
 
-## 架构（数据驱动）
+发布目录 = `wanji_kit.exe` + `flutter_windows.dll` + `data\`（含 catalog、雕塑图、字体），整目录拷贝即可运行。
+
+## 调试参数
 
 ```
-catalog/runtimes.json   运行库目录——新增组件 = 加一条 JSON，不写代码
-app/lib/engine/         检测 / 安装 / 提权 / 日志引擎
-app/lib/ui/             界面（石墨 + 信号橙 + 宋体 + mono，自有视觉体系）
+wanji_kit.exe --autoscan       # 启动后自动开扫（真实检测）
+wanji_kit.exe --demo-report    # 假数据直进结果屏（视觉自查）
+wanji_kit.exe --demo-install   # 假数据走完整安装动画，不写系统
+wanji_kit.exe --install=a,b,c  # 提权续装（内部由 UAC 重启调用）
 ```
 
-外挂 `catalog/runtimes.json` 放在 exe 同级 `catalog/` 下即可热更新组件目录，免重编。
+## 目录结构
+
+```
+catalog/runtimes.json     组件目录——新增组件 = 加一条 JSON，不写代码
+app/lib/engine/           catalog / detect / install / elevate / log 引擎
+app/lib/ui/               雕塑舞台(sculpt) + 轨道粒子模型(orb) + HUD
+app/windows/runner/       Win32 宿主：DWM 标题栏配色、最小尺寸 890x560、图标
+scripts/winshot.py        PrintWindow 截图工具
+docs/                     产品规划
+```
+
+## 已知限制
+
+- 端到端真实安装未在开发机上跑过全流程（需 UAC 确认 + 真装组件）；winget/直链/重扫逻辑为代码审查 + 演示模式验证
+- 手动项只给官方指引页跳转，不代办系统操作（如 DirectPlay 走 `ms-settings:optionalfeatures`）
+- 检测是存在性判断：能验"装没装"，不验运行库内部是否损坏
+- winget 静默安装受 winget 源可用性影响；下载兜底仅覆盖 catalog 中配了 `download` 的组件
+- 窗口最小 890×560，更小的屏幕/分屏下排版不换响应式布局
+- exe 未做代码签名，首次运行可能触发 SmartScreen 提示
 
 ## 路线图
 
