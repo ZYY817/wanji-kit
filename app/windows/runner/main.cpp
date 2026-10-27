@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <algorithm>
+
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -26,8 +28,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
-  if (!window.Create(L"wanji_kit \u00B7 \u73A9\u673A\u88C5\u673A\u5DE5\u5177", origin, size)) {
+  // Clamp the initial size to the work area: 1280x720 DIP overflows on
+  // small / high-scale laptops (e.g. 1366x768 at 125%). SPI_GETWORKAREA
+  // returns physical px; divide by the DPI scale to get DIPs, then min().
+  RECT work{0, 0, 0, 0};
+  ::SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+  const double dip_scale = ::GetDpiForSystem() / 96.0;
+  const int max_w = static_cast<int>((work.right - work.left) / dip_scale) - 40;
+  const int max_h = static_cast<int>((work.bottom - work.top) / dip_scale) - 40;
+  const int init_w = max_w > 0 ? (std::min)(1280, max_w) : 1280;
+  const int init_h = max_h > 0 ? (std::min)(720, max_h) : 720;
+  Win32Window::Size size(init_w, init_h);
+  if (!window.Create(L"\u8FD0\u884C\u5E93\u4F53\u68C0 \u00B7 ZYY817", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

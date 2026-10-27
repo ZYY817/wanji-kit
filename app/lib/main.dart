@@ -1,4 +1,4 @@
-// 玩机装机工具 —— 入口（临时：系统标题栏；开发者模式开启后恢复 window_manager 无边框）
+// 玩机装机工具 —— 入口（真·无边框窗：原生 WM_NCCALCSIZE 裁框 + 自绘窗口钮，通道 wanji/window）
 // 调试参数：--install=ids 提权续装 · --autoscan 自动开扫 · --demo-report/--demo-install 视觉自查
 import 'package:flutter/material.dart';
 import 'ui/kit_app.dart';

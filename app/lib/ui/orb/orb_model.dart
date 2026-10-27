@@ -106,6 +106,15 @@ class OrbModel extends ChangeNotifier {
   bool reduceMotion = false;   // MediaQuery.disableAnimations → 关漂浮/漂移
   void setPaused(bool p) => p ? _ticker.stop() : _ticker.start();
 
+  // —— 低功耗：静稳相位（待机/结果/完成）落定后降拍 ~30fps ——
+  // 扫描/安装相位保持满帧。ticker 仍按 vsync 走，但累积 dt 到阈值才
+  // 解算+重绘——动画时长不变，只牺牲帧率，视觉几乎无损。
+  static const _calmDelay = 3.5;   // 相位稳定多少秒后进入低频
+  static const _lowStep = 1 / 30;  // 低频节拍（秒/帧）
+  double _accum = 0;
+  bool get _calm => phase == OrbPhase.idle ||
+      phase == OrbPhase.result || phase == OrbPhase.complete;
+
   // —— 事件 ——
   final List<Ripple> ripples = [];
   double shock = -1;             // 完成冲击波 0..1，-1 休眠
@@ -119,6 +128,16 @@ class OrbModel extends ChangeNotifier {
     var dt = now - _last;
     _last = now;
     if (dt <= 0 || dt > 0.05) dt = 0.016;
+    // 静稳相位降拍：dt 照积，攒够一拍才解算——相位切换后的入场
+    // 形变（前 _calmDelay 秒）与扫描/安装全程仍是满帧
+    if (_calm && t - phaseStart > _calmDelay) {
+      _accum += dt;
+      if (_accum < _lowStep) return;
+      dt = _accum;
+      _accum = 0;
+    } else {
+      _accum = 0;
+    }
     t += dt;
     _step(dt);
     notifyListeners();

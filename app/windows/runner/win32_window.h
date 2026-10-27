@@ -55,6 +55,12 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
+  // Left edge (logical px) of the top-strip interactive controls cluster:
+  // points right of it never report HTCAPTION so window buttons and the
+  // language pill receive normal pointer input. Reported from Dart via
+  // MethodChannel once layout completes.
+  void SetCaptionExclusionLeft(double dip) { caption_excl_left_dip_ = dip; }
+
  protected:
   // Processes and route salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -87,10 +93,39 @@ class Win32Window {
   // Retrieves a class instance pointer for |window|
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
 
+  // Computes the non-client hit test code (HTCAPTION / HTLEFT / HTCLIENT /
+  // ...) that this borderless window reports for the screen point encoded
+  // in |lparam| (as in WM_NCHITTEST). |hwnd| must be the top-level frame.
+  // Shared by the frame's own WM_NCHITTEST handler and by the FlutterView
+  // child-window subclass, so both always agree on which zones are client.
+  LRESULT HitTestForScreenPoint(HWND hwnd, LPARAM lparam) const noexcept;
+
+  // Subclass proc installed on the FlutterView child window. The child
+  // covers the whole client area, so a real mouse sends WM_NCHITTEST to
+  // the child, not the frame: for points inside non-client zones (caption
+  // strip / resize edges) the proc returns HTTRANSPARENT, which makes
+  // Windows re-issue the hit test to the frame underneath, whose existing
+  // WM_NCHITTEST then owns drag/resize. Client zones answer HTCLIENT so
+  // Flutter keeps pointer input.
+  static LRESULT CALLBACK ChildViewSubclassProc(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
+      UINT_PTR subclass_id, DWORD_PTR ref_data);
+
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // uIdSubclass used for the SetWindowSubclass call on child_content_.
+  static constexpr UINT_PTR kChildViewSubclassId = 0x574A54;  // 'WJT'
+
+  // Borderless caption-strip height (logical px) used for hit testing.
+  static constexpr int kCaptionHeightDip = 40;
+
   bool quit_on_close_ = false;
+
+  // Left edge (logical px) of the top-strip controls cluster. Negative =
+  // not reported yet -> hit test falls back to reserving ~250dip at the
+  // strip's right end so the buttons stay clickable.
+  double caption_excl_left_dip_ = -1.0;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

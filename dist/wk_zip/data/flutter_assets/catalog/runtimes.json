@@ -1,0 +1,850 @@
+{
+  "version": 2,
+  "updatedAt": "2026-10-24",
+  "note": "游戏运行库目录（数据驱动）——新增组件 = 在这里加一条记录，不写代码。detect 规则类型：registry/file/command/winsxs，规则间默认 AND，相邻规则都标 or:true 构成 OR 组；install：winget 优先，download 兜底，都没有则给 manual 链接。",
+  "components": [
+    {
+      "id": "vc2022-x64",
+      "name": "Visual C++ 2015–2022 运行库（64位）",
+      "short": "VC++ 2022 x64",
+      "category": "vcredist",
+      "importance": "essential",
+      "why": "绝大多数现代游戏与工具的基础依赖",
+      "sizeMb": 25,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X64",
+          "value": "Installed",
+          "equals": 1,
+          "versionValue": "Version",
+          "minVersion": "14.30"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2015+.x64",
+        "download": {
+          "url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+          "args": "/install /quiet /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2022-x86",
+      "name": "Visual C++ 2015–2022 运行库（32位）",
+      "short": "VC++ 2022 x86",
+      "category": "vcredist",
+      "importance": "essential",
+      "why": "32位游戏与启动器必需，64位系统也要装",
+      "sizeMb": 20,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X86",
+          "value": "Installed",
+          "equals": 1,
+          "versionValue": "Version",
+          "minVersion": "14.30"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2015+.x86",
+        "download": {
+          "url": "https://aka.ms/vs/17/release/vc_redist.x86.exe",
+          "args": "/install /quiet /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2013-x64",
+      "name": "Visual C++ 2013 运行库（64位）",
+      "short": "VC++ 2013 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2014–2017 年间大量游戏依赖（老滚5、GTA5 时期）",
+      "sizeMb": 8,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\msvcr120.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2013.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2013-x86",
+      "name": "Visual C++ 2013 运行库（32位）",
+      "short": "VC++ 2013 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 8,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\msvcr120.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2013.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2012-x64",
+      "name": "Visual C++ 2012 运行库（64位）",
+      "short": "VC++ 2012 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2012–2014 年游戏常用",
+      "sizeMb": 8,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\msvcr110.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2012.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2012-x86",
+      "name": "Visual C++ 2012 运行库（32位）",
+      "short": "VC++ 2012 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 8,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\msvcr110.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2012.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2010-x64",
+      "name": "Visual C++ 2010 运行库（64位）",
+      "short": "VC++ 2010 x64",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "2010–2012 年游戏常用（巫师2、传送门2 时代）",
+      "sizeMb": 6,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\msvcr100.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2010.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2010-x86",
+      "name": "Visual C++ 2010 运行库（32位）",
+      "short": "VC++ 2010 x86",
+      "category": "vcredist",
+      "importance": "common",
+      "why": "32位老游戏必需",
+      "sizeMb": 6,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\msvcr100.dll"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2010.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2008-x64",
+      "name": "Visual C++ 2008 运行库（64位）",
+      "short": "VC++ 2008 x64",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "更早年代游戏（2008–2010）",
+      "sizeMb": 5,
+      "detect": [
+        {
+          "type": "winsxs",
+          "pattern": "amd64_microsoft.vc90.crt*"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2008.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2008-x86",
+      "name": "Visual C++ 2008 运行库（32位）",
+      "short": "VC++ 2008 x86",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "更早年代 32 位游戏",
+      "sizeMb": 5,
+      "detect": [
+        {
+          "type": "winsxs",
+          "pattern": "x86_microsoft.vc90.crt*"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2008.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
+      }
+    },
+    {
+      "id": "vc2005-x64",
+      "name": "Visual C++ 2005 SP1 运行库（64位）",
+      "short": "VC++ 2005 x64",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "2005–2008 年骨灰级老游戏（无 msvcr80.dll 打不开）",
+      "sizeMb": 4,
+      "detect": [
+        {
+          "type": "winsxs",
+          "pattern": "amd64_microsoft.vc80.crt*"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2005.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/6/B/B/6BB661D6-A8AE-4819-B79F-236472F6070C/vcredist_x64.EXE",
+          "args": "/Q"
+        }
+      }
+    },
+    {
+      "id": "vc2005-x86",
+      "name": "Visual C++ 2005 SP1 运行库（32位）",
+      "short": "VC++ 2005 x86",
+      "category": "vcredist",
+      "importance": "optional",
+      "why": "2005–2008 年 32 位老游戏必需",
+      "sizeMb": 4,
+      "detect": [
+        {
+          "type": "winsxs",
+          "pattern": "x86_microsoft.vc80.crt*"
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.VCRedist.2005.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/6/B/B/6BB661D6-A8AE-4819-B79F-236472F6070C/vcredist_x86.EXE",
+          "args": "/Q"
+        }
+      }
+    },
+    {
+      "id": "netfx48",
+      "name": ".NET Framework 4.8",
+      "short": ".NET 4.8",
+      "category": "dotnet",
+      "importance": "essential",
+      "why": "大量游戏工具与启动器（MOD 管理器、汉化补丁工具）依赖",
+      "sizeMb": 60,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full",
+          "value": "Release",
+          "minInt": 528040
+        }
+      ],
+      "install": {
+        "download": {
+          "url": "https://go.microsoft.com/fwlink/?linkid=2088631",
+          "args": "/q /norestart",
+          "name": "ndp48-web.exe"
+        }
+      }
+    },
+    {
+      "id": "netfx35",
+      "name": ".NET Framework 3.5 SP1",
+      "short": ".NET 3.5 SP1",
+      "category": "dotnet",
+      "importance": "common",
+      "why": "老游戏与老工具（2010 前后）点名要它；属 Windows 可选功能，需联网/系统源启用",
+      "sizeMb": 120,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v3.5",
+          "value": "Install",
+          "equals": 1
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v3.5",
+          "value": "SP",
+          "minInt": 1
+        }
+      ],
+      "install": {
+        "manual": {
+          "url": "https://learn.microsoft.com/dotnet/framework/install/dotnet-35-windows",
+          "label": "官方启用指南（DISM/Windows 功能）"
+        }
+      }
+    },
+    {
+      "id": "netdesktop9",
+      "name": ".NET 桌面运行时 9",
+      "short": ".NET 9 Desktop",
+      "category": "dotnet",
+      "importance": "common",
+      "why": "最新一代工具/启动器逐步迁移到 .NET 9",
+      "sizeMb": 55,
+      "detect": [
+        {
+          "type": "command",
+          "cmd": "dotnet",
+          "args": "--list-runtimes",
+          "contains": "Microsoft.WindowsDesktop.App 9."
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.DotNet.DesktopRuntime.9",
+        "download": {
+          "url": "https://aka.ms/dotnet/9.0/windowsdesktop-runtime-win-x64.exe",
+          "args": "/install /quiet /norestart"
+        }
+      }
+    },
+    {
+      "id": "netdesktop8",
+      "name": ".NET 桌面运行时 8",
+      "short": ".NET 8 Desktop",
+      "category": "dotnet",
+      "importance": "common",
+      "why": "新式工具与启动器（部分 MOD 管理器、游戏工具箱）依赖",
+      "sizeMb": 60,
+      "detect": [
+        {
+          "type": "command",
+          "cmd": "dotnet",
+          "args": "--list-runtimes",
+          "contains": "Microsoft.WindowsDesktop.App 8."
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.DotNet.DesktopRuntime.8",
+        "download": {
+          "url": "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe",
+          "args": "/install /quiet /norestart"
+        }
+      }
+    },
+    {
+      "id": "netdesktop6",
+      "name": ".NET 桌面运行时 6",
+      "short": ".NET 6 Desktop",
+      "category": "dotnet",
+      "importance": "optional",
+      "why": "2021–2023 年间的工具只认 .NET 6（运行时不向下兼容）",
+      "sizeMb": 55,
+      "detect": [
+        {
+          "type": "command",
+          "cmd": "dotnet",
+          "args": "--list-runtimes",
+          "contains": "Microsoft.WindowsDesktop.App 6."
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.DotNet.DesktopRuntime.6",
+        "download": {
+          "url": "https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x64.exe",
+          "args": "/install /quiet /norestart"
+        }
+      }
+    },
+    {
+      "id": "webview2",
+      "name": "WebView2 运行时",
+      "short": "WebView2",
+      "category": "runtime",
+      "importance": "common",
+      "why": "新版启动器内嵌网页全靠它（EA App、Xbox、新登录器打不开多半缺它）",
+      "sizeMb": 180,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+          "value": "pv",
+          "versionValue": "pv",
+          "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+          "value": "pv",
+          "versionValue": "pv",
+          "or": true
+        }
+      ],
+      "install": {
+        "winget": "Microsoft.EdgeWebView2Runtime",
+        "download": {
+          "url": "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+          "args": "/silent /install",
+          "name": "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+        }
+      }
+    },
+    {
+      "id": "dx-jun2010",
+      "name": "DirectX 旧组件（June 2010）",
+      "short": "DirectX 9.0c 补件",
+      "category": "directx",
+      "importance": "essential",
+      "why": "DX9/老游戏缺 D3DX9、XAudio、XInput1_3、XACT 报的错全是它",
+      "sizeMb": 95,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\D3DX9_43.dll"
+        },
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\X3DAudio1_7.dll"
+        },
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\XInput1_3.dll"
+        },
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\D3DX9_43.dll"
+        },
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\XInput1_3.dll"
+        }
+      ],
+      "install": {
+        "download": {
+          "url": "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe",
+          "args": "/Q"
+        }
+      }
+    },
+    {
+      "id": "directplay",
+      "kind": "setting",
+      "rec": "on",
+      "name": "DirectPlay（旧版组件）",
+      "short": "DirectPlay",
+      "category": "windows",
+      "importance": "optional",
+      "why": "2000 年代老游戏联机组件（帝国时代、红警2 等），Windows 可选功能",
+      "sizeMb": 1,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\dplayx.dll"
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "dism /online /enable-feature /featurename:DirectPlay /all /norestart",
+        "elevated": true,
+        "manual": {
+          "url": "ms-settings:optionalfeatures",
+          "label": "Windows 功能 → 旧版组件 → DirectPlay"
+        }
+      }
+    },
+    {
+      "id": "mediafeaturepack",
+      "name": "Media Feature Pack",
+      "short": "Media Feature Pack",
+      "category": "windows",
+      "importance": "optional",
+      "why": "仅 N 版 Windows 会缺（mfplat.dll），缺失时视频解码/游戏过场黑屏",
+      "sizeMb": 70,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\mfplat.dll"
+        }
+      ],
+      "install": {
+        "manual": {
+          "url": "ms-settings:optionalfeatures",
+          "label": "设置 → 可选功能 → 查看功能 → Media Feature Pack"
+        }
+      }
+    },
+    {
+      "id": "java21",
+      "name": "Java 21 运行时（Adoptium Temurin）",
+      "short": "Java 21",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "部分整合包/启动器/工具需要系统级 Java（Minecraft 官方启动器自带可忽略）",
+      "sizeMb": 45,
+      "detect": [
+        {
+          "type": "command",
+          "cmd": "where",
+          "args": "java",
+          "contains": "java"
+        }
+      ],
+      "install": {
+        "winget": "EclipseAdoptium.Temurin.21.JRE",
+        "download": {
+          "url": "https://api.adoptium.net/v3/installer/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse",
+          "args": "msiexec",
+          "name": "temurin21-jre.msi",
+          "msiArgs": "/i {file} /qn /norestart ADDLOCAL=FeatureMain,FeatureEnvironment"
+        }
+      }
+    },
+    {
+      "id": "xna4",
+      "name": "XNA Framework 4.0",
+      "short": "XNA 4.0",
+      "category": "middleware",
+      "importance": "common",
+      "why": "星露谷物语、泰拉瑞亚、FEZ 等独立游戏必需",
+      "sizeMb": 7,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "or": true,
+          "key": "SOFTWARE\\Microsoft\\XNA\\Framework\\v4.0",
+          "value": "Installed",
+          "equals": 1
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "or": true,
+          "key": "SOFTWARE\\WOW6432Node\\Microsoft\\XNA\\Framework\\v4.0",
+          "value": "Installed",
+          "equals": 1
+        }
+      ],
+      "install": {
+        "download": {
+          "url": "https://download.microsoft.com/download/A/C/2/AC2C903B-E6E8-42C2-9FD7-BEBAC362A930/xnafx40_redist.msi",
+          "args": "msiexec",
+          "msiArgs": "/i {file} /qn /norestart"
+        }
+      }
+    },
+    {
+      "id": "openal",
+      "name": "OpenAL 音频库",
+      "short": "OpenAL",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "Minecraft、部分独立游戏与模拟器需要",
+      "sizeMb": 1,
+      "detect": [
+        {
+          "type": "file",
+          "path": "%WINDIR%\\System32\\OpenAL32.dll",
+          "or": true
+        },
+        {
+          "type": "file",
+          "path": "%WINDIR%\\SysWOW64\\OpenAL32.dll",
+          "or": true
+        }
+      ],
+      "install": {
+        "manual": {
+          "url": "https://www.openal.org/downloads/",
+          "label": "OpenAL 官网"
+        }
+      }
+    },
+    {
+      "id": "physx",
+      "name": "NVIDIA PhysX 系统软件",
+      "short": "PhysX",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "部分老 3A（蝙蝠侠、无主之地、镜之边缘）需要独立 PhysX",
+      "sizeMb": 30,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}_Display.PhysX",
+          "value": "DisplayName",
+          "versionValue": "DisplayVersion",
+          "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\AGEIA Technologies",
+          "value": "PhysX Version",
+          "versionValue": "PhysX Version",
+          "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\AGEIA Technologies",
+          "value": "PhysX Version",
+          "versionValue": "PhysX Version",
+          "or": true
+        }
+      ],
+      "install": {
+        "manual": {
+          "url": "https://www.nvidia.com/en-us/drivers/physx/physx-9-21-0713-driver/",
+          "label": "NVIDIA 官网"
+        }
+      }
+    },
+    {
+      "id": "ue4prereq",
+      "name": "UE4/UE5 前置组件包",
+      "short": "UE 前置组件",
+      "category": "middleware",
+      "importance": "optional",
+      "why": "虚幻引擎游戏首发弹“UE4 Prerequisites 缺失”就是它；正常随游戏 Redist 目录自带",
+      "sizeMb": 30,
+      "detect": [
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{F9EC45F9-074A-48BF-92E9-A8CADD56F693}",
+          "value": "DisplayName",
+          "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{4e242cc8-5e3c-4b08-9d55-dbc62ddd1208}",
+          "value": "DisplayName",
+          "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{b24cae82-bb64-4ad2-820a-dc2c4031c914}",
+          "value": "DisplayName",
+          "or": true
+        }
+      ],
+      "install": {
+        "manual": {
+          "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/packaging-unreal-engine-projects",
+          "label": "游戏目录 Engine\\Extras\\Redist 内自带安装器"
+        }
+      }
+    },
+    {
+      "id": "power-high",
+      "kind": "setting",
+      "rec": "switch",
+      "name": "高性能电源计划",
+      "short": "高性能电源",
+      "category": "setting",
+      "importance": "low",
+      "why": "避免节能策略限制 CPU/GPU 睿频，帧率与加载更稳",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "command",
+          "cmd": "powercfg",
+          "args": "/getactivescheme",
+          "contains": "8c5e7fda",
+          "or": true
+        },
+        {
+          "type": "command",
+          "cmd": "powercfg",
+          "args": "/getactivescheme",
+          "contains": "5f2b1c8d",
+          "or": true
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c || powercfg /setactive 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f || (powercfg /duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f && powercfg /setactive 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f)",
+        "elevated": false
+      }
+    },
+    {
+      "id": "gamemode",
+      "kind": "setting",
+      "rec": "on",
+      "name": "游戏模式 Game Mode",
+      "short": "游戏模式",
+      "category": "setting",
+      "importance": "low",
+      "why": "游戏时优先分配 CPU/GPU 资源并压制后台更新",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "registry",
+          "hive": "hkcu",
+          "key": "Software\\Microsoft\\GameBar",
+          "value": "AllowAutoGameMode",
+          "equals": 1
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "reg add \"HKCU\\Software\\Microsoft\\GameBar\" /v AllowAutoGameMode /t REG_DWORD /d 1 /f",
+        "elevated": false
+      }
+    },
+    {
+      "id": "hags",
+      "kind": "setting",
+      "rec": "on",
+      "name": "GPU 硬件加速调度 HAGS",
+      "short": "硬件加速调度",
+      "category": "setting",
+      "importance": "low",
+      "why": "显卡直接管理显存调度，降低延迟；开启后需重启生效（不支持的硬件会保持未开启）",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "registry",
+          "key": "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers",
+          "value": "HwSchMode",
+          "equals": 2
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\" /v HwSchMode /t REG_DWORD /d 2 /f",
+        "elevated": true
+      }
+    },
+    {
+      "id": "game-dvr-off",
+      "kind": "setting",
+      "rec": "off",
+      "name": "关闭 Game DVR 后台录制",
+      "short": "关后台录制",
+      "category": "setting",
+      "importance": "low",
+      "why": "后台录制持续占用磁盘与编码资源，关闭可明显减少帧率波动",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "registry",
+          "hive": "hkcu",
+          "key": "System\\GameConfigStore",
+          "value": "GameDVR_Enabled",
+          "equals": 0
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "reg add \"HKCU\\System\\GameConfigStore\" /v GameDVR_Enabled /t REG_DWORD /d 0 /f && reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR\" /v AppCaptureEnabled /t REG_DWORD /d 0 /f",
+        "elevated": false
+      }
+    },
+    {
+      "id": "fullscreen-opt",
+      "kind": "setting",
+      "rec": "on",
+      "name": "全屏优化模式",
+      "short": "全屏优化",
+      "category": "setting",
+      "importance": "low",
+      "why": "让全屏游戏走优化呈现路径，无边框全屏也能拿满帧率",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "registry",
+          "hive": "hkcu",
+          "key": "System\\GameConfigStore",
+          "value": "GameDVR_FSEBehaviorMode",
+          "equals": 2
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "reg add \"HKCU\\System\\GameConfigStore\" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 2 /f",
+        "elevated": false
+      }
+    },
+    {
+      "id": "visual-performance",
+      "kind": "setting",
+      "rec": "switch",
+      "name": "视觉效果调为性能优先",
+      "short": "视觉性能优先",
+      "category": "setting",
+      "importance": "low",
+      "why": "关掉动画/阴影等桌面特效换帧率；界面会变朴素，随时可在系统性能选项里改回",
+      "sizeMb": 0,
+      "detect": [
+        {
+          "type": "registry",
+          "hive": "hkcu",
+          "key": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects",
+          "value": "VisualFXSetting",
+          "equals": 2
+        }
+      ],
+      "install": {
+        "channel": "command",
+        "run": "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects\" /v VisualFXSetting /t REG_DWORD /d 2 /f",
+        "elevated": false
+      }
+    }
+  ]
+}

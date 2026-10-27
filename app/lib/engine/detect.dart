@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:win32_registry/win32_registry.dart';
 import 'catalog_model.dart';
+import 'env_path.dart';
 
 class Detector {
   /// 扫描全部组件：onProgress 在某项开始检测前触发，onResult 在每项完成时触发。
@@ -119,10 +120,17 @@ class Detector {
 
   static Future<_Hit> _command(DetectRule r) async {
     try {
+      // 关键：注入从注册表重建的 PATH——本进程启动时的 PATH 是旧快照，
+      // 装完 dotnet/java 后立即 verify 会找不到命令（误报「验证失败」）
       final res = await Process.run(r.cmd!, r.args!.split(' '),
-          runInShell: true, stdoutEncoding: systemEncoding);
+          runInShell: true, stdoutEncoding: systemEncoding,
+          environment: EnvPath.environment());
       if (res.exitCode != 0) return _Hit(false, '${r.cmd} ${r.args}');
-      final ok = (res.stdout as String).contains(r.contains!);
+      // contains 比较两侧统一小写：GUID/命令输出的大小写随系统语言与
+      // 工具版本浮动（powercfg 各语言输出都带方案 GUID 段，但不保证大小写）
+      final ok = (res.stdout as String)
+          .toLowerCase()
+          .contains(r.contains!.toLowerCase());
       return _Hit(ok, '${r.cmd} ${r.args}');
     } catch (_) {
       return _Hit(false, '${r.cmd}（未安装命令）');
@@ -130,8 +138,10 @@ class Detector {
   }
 
   static Future<_Hit> _winsxs(DetectRule r) async {
+    // /ad + 非递归：pattern 只匹配 WinSxS 顶层目录名——
+    // 实测 0.06s vs 全递归 /s 的 ~7s（约百倍提速，「约 10 秒」名实相符）
     final res = await Process.run(
-        'cmd', ['/c', 'dir', '/b', '/s', '%WINDIR%\\WinSxS\\${r.pattern}'],
+        'cmd', ['/c', 'dir', '/b', '/ad', '%WINDIR%\\WinSxS\\${r.pattern}'],
         runInShell: true, stdoutEncoding: systemEncoding);
     final ok = res.exitCode == 0 && (res.stdout as String).trim().isNotEmpty;
     return _Hit(ok, 'WinSxS:${r.pattern}');

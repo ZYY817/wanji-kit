@@ -12,7 +12,7 @@ Windows 游戏运行环境一键检测与安装工具。Flutter Windows 桌面�
 
 ## 运行要求
 
-- Windows 10 / 11 x64（Win11 上标题栏与界面同色无缝；Win10 用系统默认标题栏）
+- Windows 10 / 11 x64（真·无边框窗：顶部 chrome 行即标题栏，可拖拽、双击最大化、边缘缩放）
 - winget 可选：没有 winget 时自动走官方直链；装运行库需要管理员（届时会弹 UAC）
 
 ## 构建
@@ -26,7 +26,11 @@ flutter run -d windows           # 调试运行
 flutter build windows --release  # 产出 → app\build\windows\x64\runner\Release\
 ```
 
-发布目录 = `wanji_kit.exe` + `flutter_windows.dll` + `data\`（含 catalog、雕塑图、字体），整目录拷贝即可运行。
+## 分发须知
+
+- **整目录分发**：`wanji_kit.exe` + `flutter_windows.dll` + `data\`（含 catalog、雕塑图、字体）三者缺一不可，单独拷贝 exe **跑不起来**。发布产物见 `dist\wanji-kit-v0.2.1-windows-x64.zip`，解压即整目录
+- **SmartScreen 提示属正常**：exe 未做代码签名，首次运行可能弹「Windows 已保护你的电脑」→ 更多信息 → 仍要运行
+- `catalog\runtimes.json` 放 exe 同级可热更组件，不用重编
 
 ## 调试参数
 
@@ -43,7 +47,7 @@ wanji_kit.exe --install=a,b,c  # 提权续装（内部由 UAC 重启调用）
 catalog/runtimes.json     组件目录——新增组件 = 加一条 JSON，不写代码
 app/lib/engine/           catalog / detect / install / elevate / log 引擎
 app/lib/ui/               雕塑舞台(sculpt) + 轨道粒子模型(orb) + HUD
-app/windows/runner/       Win32 宿主：DWM 标题栏配色、最小尺寸 890x560、图标
+app/windows/runner/       Win32 宿主：无边框（NCCALCSIZE 裁框 + NCHITTEST 拖拽/缩放 + wanji/window 通道）、最小 890x560、图标
 scripts/winshot.py        PrintWindow 截图工具
 docs/                     产品规划
 ```
@@ -55,12 +59,12 @@ docs/                     产品规划
 - 检测是存在性判断：能验"装没装"，不验运行库内部是否损坏
 - winget 静默安装受 winget 源可用性影响；下载兜底仅覆盖 catalog 中配了 `download` 的组件
 - 窗口最小 890×560，更小的屏幕/分屏下排版不换响应式布局
-- exe 未做代码签名，首次运行可能触发 SmartScreen 提示
 
 ## 路线图
 
-- v0.1（当前）：扫描 + 报告 + 一键装齐 + 日志
-- v0.2：按游戏检查（吃玩机索引站数据）、修复模式、catalog 在线热更
+- v0.1：扫描 + 报告 + 一键装齐 + 日志
+- v0.2.1（当前）：无边框窗 + 双语 + 修复模式 + 32 项目录 + 系统优化项
+- v0.3：按游戏检查（吃玩机索引站数据）、catalog 在线热更
 - v0.3：离线包、自动更新、CLI（`wanji-kit scan --json`）
 
 详见 `docs/产品规划.md`。

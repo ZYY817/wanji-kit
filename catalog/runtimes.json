@@ -72,7 +72,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2013.x64"
+        "winget": "Microsoft.VCRedist.2013.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -90,7 +94,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2013.x86"
+        "winget": "Microsoft.VCRedist.2013.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -108,7 +116,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2012.x64"
+        "winget": "Microsoft.VCRedist.2012.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -126,7 +138,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2012.x86"
+        "winget": "Microsoft.VCRedist.2012.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -144,7 +160,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2010.x64"
+        "winget": "Microsoft.VCRedist.2010.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -162,7 +182,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2010.x86"
+        "winget": "Microsoft.VCRedist.2010.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -180,7 +204,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2008.x64"
+        "winget": "Microsoft.VCRedist.2008.x64",
+        "download": {
+          "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -198,7 +226,11 @@
         }
       ],
       "install": {
-        "winget": "Microsoft.VCRedist.2008.x86"
+        "winget": "Microsoft.VCRedist.2008.x86",
+        "download": {
+          "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe",
+          "args": "/q /norestart"
+        }
       }
     },
     {
@@ -218,7 +250,7 @@
       "install": {
         "winget": "Microsoft.VCRedist.2005.x64",
         "download": {
-          "url": "https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F2-AC1E-4B208FD2D66D/vcredist_x64.EXE",
+          "url": "https://download.microsoft.com/download/6/B/B/6BB661D6-A8AE-4819-B79F-236472F6070C/vcredist_x64.EXE",
           "args": "/Q"
         }
       }
@@ -240,7 +272,7 @@
       "install": {
         "winget": "Microsoft.VCRedist.2005.x86",
         "download": {
-          "url": "https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F2-AC1E-4B208FD2D66D/vcredist_x86.EXE",
+          "url": "https://download.microsoft.com/download/6/B/B/6BB661D6-A8AE-4819-B79F-236472F6070C/vcredist_x86.EXE",
           "args": "/Q"
         }
       }
@@ -514,7 +546,7 @@
           "url": "https://api.adoptium.net/v3/installer/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse",
           "args": "msiexec",
           "name": "temurin21-jre.msi",
-          "msiArgs": "/i {file} /qn /norestart"
+          "msiArgs": "/i {file} /qn /norestart ADDLOCAL=FeatureMain,FeatureEnvironment"
         }
       }
     },
@@ -603,6 +635,14 @@
           "value": "PhysX Version",
           "versionValue": "PhysX Version",
           "or": true
+        },
+        {
+          "type": "registry",
+          "view": "x64",
+          "key": "SOFTWARE\\WOW6432Node\\AGEIA Technologies",
+          "value": "PhysX Version",
+          "versionValue": "PhysX Version",
+          "or": true
         }
       ],
       "install": {
@@ -672,20 +712,13 @@
           "type": "command",
           "cmd": "powercfg",
           "args": "/getactivescheme",
-          "contains": "performance",
-          "or": true
-        },
-        {
-          "type": "command",
-          "cmd": "powercfg",
-          "args": "/getactivescheme",
-          "contains": "性能",
+          "contains": "5f2b1c8d",
           "or": true
         }
       ],
       "install": {
         "channel": "command",
-        "run": "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c || powercfg -duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
+        "run": "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c || powercfg /setactive 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f || (powercfg /duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f && powercfg /setactive 5f2b1c8d-3e4a-4f6b-9c7d-2e8a1b4c6d8f)",
         "elevated": false
       }
     },

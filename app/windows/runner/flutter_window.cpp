@@ -27,6 +27,48 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // "wanji/window": the in-app caption buttons call native window ops.
+  // hwnd is taken directly from GetHandle(); Dart never passes it.
+  const HWND hwnd = GetHandle();
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "wanji/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this, hwnd](const flutter::MethodCall<flutter::EncodableValue>& call,
+                   std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                       result) {
+        const std::string& method = call.method_name();
+        if (method == "minimize") {
+          ::ShowWindow(hwnd, SW_MINIMIZE);
+          result->Success();
+        } else if (method == "toggleMaximize") {
+          ::ShowWindow(hwnd, ::IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+          result->Success();
+        } else if (method == "isMaximized") {
+          result->Success(flutter::EncodableValue(::IsZoomed(hwnd) == TRUE));
+        } else if (method == "close") {
+          ::PostMessage(hwnd, WM_CLOSE, 0, 0);
+          result->Success();
+        } else if (method == "setCaptionExclusion") {
+          // Dart reports the controls cluster left edge (DIP); points right
+          // of it in the caption strip stay HTCLIENT so buttons get input.
+          const auto* d = std::get_if<double>(call.arguments());
+          const auto* i32 = std::get_if<int32_t>(call.arguments());
+          const auto* i64 = std::get_if<int64_t>(call.arguments());
+          if (d != nullptr) {
+            SetCaptionExclusionLeft(*d);
+          } else if (i32 != nullptr) {
+            SetCaptionExclusionLeft(static_cast<double>(*i32));
+          } else if (i64 != nullptr) {
+            SetCaptionExclusionLeft(static_cast<double>(*i64));
+          }
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });

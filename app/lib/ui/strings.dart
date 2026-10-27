@@ -38,7 +38,7 @@ class S {
 
   static const _t = <String, Map<String, String>>{
     'zh': {
-      'appTitle': 'wanji_kit · 玩机装机工具',
+      'appTitle': '运行库体检 · ZYY817',
       // —— 待机 ——
       'idleTitle': '运行库体检',
       'idleSub': '检查游戏运行环境',
@@ -102,6 +102,7 @@ class S {
       'loadFail': '组件目录加载失败',
       // —— 安装引擎细节 ——
       'evDownloading': '下载官方安装包…',
+      'evDlPct': '下载官方安装包… {pct}%',
       'evInstalling': '静默安装…',
       'evVerifying': '安装后重扫…',
       'evWingetExit': 'winget 退出码 {code}',
@@ -111,6 +112,7 @@ class S {
       'evDlFail': '下载失败',
       'evVerifyFail': '安装器返回成功但验证未通过',
       'evInterrupted': '安装中断：{err}',
+      'uacCancel': '提权已取消，可稍后重试',
       // —— 关于 ——
       'aboutTitle': '关于作者',
       'aboutBioZh': '用 AI 创造，让想法真正产生价值。',
@@ -118,7 +120,7 @@ class S {
           'tools, and content for real-world impact.',
     },
     'en': {
-      'appTitle': 'wanji_kit · Game Runtime Kit',
+      'appTitle': 'Runtime Check · ZYY817',
       // —— idle ——
       'idleTitle': 'Runtime Check',
       'idleSub': 'Game runtime health check',
@@ -182,6 +184,7 @@ class S {
       'loadFail': 'Catalog failed to load',
       // —— install engine details ——
       'evDownloading': 'Downloading installer…',
+      'evDlPct': 'Downloading installer… {pct}%',
       'evInstalling': 'Silent install…',
       'evVerifying': 'Re-checking…',
       'evWingetExit': 'winget exit {code}',
@@ -191,6 +194,7 @@ class S {
       'evDlFail': 'download failed',
       'evVerifyFail': 'installer ok but verify failed',
       'evInterrupted': 'interrupted: {err}',
+      'uacCancel': 'Elevation cancelled — try again anytime',
       // —— about ——
       'aboutTitle': 'About',
       'aboutBioZh': '用 AI 创造，让想法真正产生价值。',

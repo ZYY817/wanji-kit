@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show LogicalKeyboardKey, KeyDownEvent;
+    show LogicalKeyboardKey, KeyDownEvent, MethodChannel;
 import 'package:path/path.dart' as p;
 import '../engine/catalog.dart';
 import '../engine/detect.dart';
@@ -17,6 +17,31 @@ import 'hud.dart';
 import 'strings.dart';
 import 'orb/orb_model.dart';
 import 'sculpt/sculpt_stage.dart';
+
+/// 无边框窗控制通道「wanji/window」→ 原生层 ShowWindow / WM_CLOSE。
+/// 调用失败静默忽略（调试期原生侧未编译新通道时界面照常可用）。
+class Win {
+  static const _ch = MethodChannel('wanji/window');
+  static Future<void> _call(String m, [Object? args]) async {
+    try {
+      await _ch.invokeMethod(m, args);
+    } catch (_) {/* 原生侧缺失时按无操作处理 */}
+  }
+
+  static Future<void> minimize() => _call('minimize');
+  static Future<void> toggleMaximize() => _call('toggleMaximize');
+  static Future<void> close() => _call('close');
+  static Future<void> setCaptionExclusion(double leftDip) =>
+      _call('setCaptionExclusion', leftDip);
+
+  static Future<bool> isMaximized() async {
+    try {
+      return await _ch.invokeMethod<bool>('isMaximized') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+}
 
 class KitApp extends StatefulWidget {
   final List<String> presetInstall;
@@ -50,6 +75,10 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   bool _incRt = true, _incSt = true;
   // 安装失败项：完成屏展示官方下载兜底链接
   final Set<String> _failIds = {};
+  // 无边框窗：顶条控件群 key（上报排除区左缘）+ 最大化图标态
+  final GlobalKey _controlsKey = GlobalKey();
+  bool _maximized = false;
+  double _lastExcl = -1;
 
   @override
   void initState() {
@@ -60,6 +89,31 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
           s != AppLifecycleState.inactive);
     });
     _load();
+    // 首帧后上报顶条排除区 + 最大化态（之后由尺寸变化通知触发）
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _syncWindowChrome());
+  }
+
+  /// 同步无边框窗状态：顶条控件群左缘（拖拽排除线）+ 最大化图标态。
+  /// 窗口尺寸变化（最大化/还原/分屏）后经 SizeChangedLayoutNotification 调用。
+  void _syncWindowChrome() {
+    final ro = _controlsKey.currentContext?.findRenderObject();
+    if (ro is RenderBox && ro.hasSize) {
+      final left = ro.localToGlobal(Offset.zero).dx;
+      if (left != _lastExcl) {
+        _lastExcl = left;
+        Win.setCaptionExclusion(left);
+      }
+    }
+    Win.isMaximized().then((m) {
+      if (mounted && m != _maximized) setState(() => _maximized = m);
+    });
+  }
+
+  Future<void> _winToggleMax() async {
+    await Win.toggleMaximize();
+    final m = await Win.isMaximized();
+    if (mounted && m != _maximized) setState(() => _maximized = m);
   }
 
   @override
@@ -212,8 +266,11 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() => _admin = admin);
       if (!admin) {
-        await Elevation.relaunchElevated(items.map((c) => c.id).toList());
-        return; // 用户取消 UAC → 留在原位
+        final ok = await Elevation.relaunchElevated(
+            items.map((c) => c.id).toList());
+        // 用户取消 UAC / 拉起失败 → 给出提示留在原位（此前静默无反馈）
+        if (!ok && mounted) setState(() => _detail = S.of('uacCancel'));
+        return;
       }
     }
     await _startInstall(items);
@@ -349,57 +406,105 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
           : AnimatedBuilder(
               animation: orb,
               builder: (_, _) => LayoutBuilder(
-                builder: (_, cst) => Stack(children: [
-                  Positioned.fill(child: SculptStage(model: orb)),
-                  _chromeRow(),
-                  _panel(cst.maxWidth, cst.maxHeight),
-                  _bottomMeta(),
-                  if (_aboutOpen) _aboutLayer(),
-                ]),
+                builder: (_, cst) => NotificationListener<
+                    SizeChangedLayoutNotification>(
+                  // 窗口尺寸变化（含系统最大化/还原/分屏）→ 重算顶条排除+图标
+                  onNotification: (_) {
+                    WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _syncWindowChrome());
+                    return false;
+                  },
+                  child: SizeChangedLayoutNotifier(
+                    child: Stack(children: [
+                      Positioned.fill(child: SculptStage(model: orb)),
+                      _chromeRow(),
+                      _panel(cst.maxWidth, cst.maxHeight),
+                      _bottomMeta(),
+                      if (_aboutOpen) _aboutLayer(),
+                    ]),
+                  ),
+                ),
               ),
             ),
     );
   }
 
-  /// 顶部 in-app chrome：与浅色系统标题栏接成一条
-  /// 文本不吸指针（透传给雕塑视差）；仅「中 / EN」语言切换可点
+  /// 顶部 in-app chrome —— 无边框窗下整行就是「标题栏」：
+  /// 左 品牌字 · 右 系统信息 + 语言胶囊 + 窗口控制钮。
+  /// 行区（除控件群）由原生层 WM_NCHITTEST 回 HTCAPTION → 可拖拽/双击最大化。
   Widget _chromeRow() {
     final style = KT.mono.copyWith(
         fontSize: 9.5, letterSpacing: 3.0, color: K.fg3, height: 1);
     return Positioned(top: 0, left: 0, right: 0,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-          child: Row(children: [
-            IgnorePointer(child: Text('WANJI KIT',
-                style: style.copyWith(color: K.fg2))),
-            IgnorePointer(child: Text(' · BY ZYY817', style: style)),
-            const Spacer(),
-            IgnorePointer(child: Text('WINDOWS 10 / 11 · X64',
-                style: style)),
-            const SizedBox(width: 14),
-            _langToggle(),
-          ]),
-        ));
+        child: SizedBox(height: 40,   // 与原生 kCaptionHeightDip 对齐
+          child: Padding(
+            padding: const EdgeInsets.only(left: 18),
+            child: Row(children: [
+              IgnorePointer(child: Text('RUNTIME CHECK',
+                  style: style.copyWith(color: K.fg2))),
+              IgnorePointer(child: Text(' · BY ZYY817', style: style)),
+              const Spacer(),
+              IgnorePointer(child: Text('WINDOWS 10 / 11 · X64',
+                  style: style)),
+              const SizedBox(width: 14),
+              // 控件群：胶囊左缘即原生拖拽排除线（_controlsKey 上报）；
+              // 自身尺寸变化（含首次出现）→ 立即上报排除线
+              NotificationListener<SizeChangedLayoutNotification>(
+                onNotification: (_) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _syncWindowChrome());
+                  return false;
+                },
+                child: SizeChangedLayoutNotifier(
+                  child: Row(key: _controlsKey,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                    _langPill(),
+                    const SizedBox(width: 4),
+                    WinCaptionButton(WinBtnKind.min,
+                        onTap: Win.minimize),
+                    WinCaptionButton(
+                        _maximized ? WinBtnKind.restore : WinBtnKind.max,
+                        onTap: _winToggleMax),
+                    WinCaptionButton(WinBtnKind.close, onTap: Win.close),
+                  ]),
+                ),
+              ),
+            ]),
+          )));
   }
 
-  /// 中 / EN 切换：mono 9.5，激活语言加深
-  Widget _langToggle() {
-    final mono = KT.mono.copyWith(fontSize: 9.5, letterSpacing: 1.2, height: 1);
-    Color act(bool isAct) => isAct ? K.fg2 : K.fg3;
+  /// 中 | EN 胶囊：描边圆角 pill，当前语言实心墨底白字，另一浅灰；点击切换
+  Widget _langPill() {
+    Widget seg(String t, bool on) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 18,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: on ? K.ink : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text(t, style: KT.uiMeta.copyWith(
+            fontSize: 9.5, height: 1, letterSpacing: 0.6,
+            color: on ? K.pearl : K.fg3,
+            fontWeight: on ? FontWeight.w700 : FontWeight.w400)));
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: _toggleLang,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          child: Text.rich(TextSpan(children: [
-            TextSpan(text: '中', style: KT.uiMeta.copyWith(fontSize: 9.5,
-                height: 1, color: act(!S.isEn),
-                fontWeight: S.isEn ? FontWeight.w400 : FontWeight.w700)),
-            TextSpan(text: ' / ', style: mono.copyWith(color: K.fg3)),
-            TextSpan(text: 'EN', style: mono.copyWith(color: act(S.isEn),
-                fontWeight: S.isEn ? FontWeight.w700 : FontWeight.w400)),
-          ])),
+        child: Container(
+          height: 22,
+          padding: const EdgeInsets.all(1.6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: K.line, width: 0.9),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            seg('中', !S.isEn),
+            Container(width: 0.7, height: 10, color: K.line),
+            seg('EN', S.isEn),
+          ]),
         ),
       ),
     );
@@ -690,6 +795,11 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
         HaloLink(S.of('about'), onTap: _openAbout),
         HaloLink(S.of('exit'), onTap: () => exit(0)),
       ])),
+      // 轻提示行（如 UAC 取消）：结果屏没有安装面板，借这里露出 _detail
+      if (_detail.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(top: 2),
+            child: Text(_detail, style: KT.uiMeta.copyWith(
+                fontSize: 12, color: K.fg3))),
     ]);
   }
 
@@ -751,6 +861,10 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
       Row(children: [
         HaloLink(S.of('repairBack'), onTap: _exitRepair),
       ]),
+      if (_detail.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(top: 2),
+            child: Text(_detail, style: KT.uiMeta.copyWith(
+                fontSize: 12, color: K.fg3))),
     ]);
   }
 

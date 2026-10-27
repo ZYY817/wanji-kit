@@ -284,6 +284,88 @@ class _AboutLinkRowState extends State<AboutLinkRow> {
   }
 }
 
+/// 无边框窗的窗口控制钮：46×32 极简细线 icon。
+/// hover：min/max/restore 淡墨底加深图标；close 红底白字。
+enum WinBtnKind { min, max, restore, close }
+
+class WinCaptionButton extends StatefulWidget {
+  final WinBtnKind kind;
+  final VoidCallback onTap;
+  const WinCaptionButton(this.kind, {super.key, required this.onTap});
+  @override
+  State<WinCaptionButton> createState() => _WinCaptionButtonState();
+}
+
+class _WinCaptionButtonState extends State<WinCaptionButton> {
+  var _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    final isClose = widget.kind == WinBtnKind.close;
+    final bg = _hover
+        ? (isClose ? const Color(0xFFC42B1C)
+                   : K.ink.withValues(alpha: 0.08))
+        : Colors.transparent;
+    final fg = isClose && _hover ? const Color(0xFFFDFBF5) : K.ink;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 46, height: 32, color: bg,
+          child: CustomPaint(
+              painter: _CaptionIconPainter(widget.kind, fg, bg)),
+        ),
+      ),
+    );
+  }
+}
+
+/// 发丝级细线 icon：— / ▢ / 叠方框 / ✕，1px 描边
+class _CaptionIconPainter extends CustomPainter {
+  final WinBtnKind kind;
+  final Color fg, bg;
+  const _CaptionIconPainter(this.kind, this.fg, this.bg);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = fg
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    final c = size.center(Offset.zero);
+    switch (kind) {
+      case WinBtnKind.min:
+        canvas.drawLine(Offset(c.dx - 4.5, c.dy),
+            Offset(c.dx + 4.5, c.dy), p);
+      case WinBtnKind.max:
+        canvas.drawRect(
+            Rect.fromCenter(center: c, width: 9.5, height: 9.5), p);
+      case WinBtnKind.restore:
+        // 后方窗框右上偏：先画完整方框，再用底色盖前方方框区域画出前景
+        final rear = Rect.fromCenter(
+            center: c + const Offset(1.5, -1.5), width: 8.5, height: 8.5);
+        final front = Rect.fromCenter(
+            center: c + const Offset(-1.5, 1.5), width: 8.5, height: 8.5);
+        canvas.drawRect(rear, p);
+        canvas.drawRect(front, Paint()..color = bg);
+        canvas.drawRect(front, p);
+      case WinBtnKind.close:
+        canvas.drawLine(Offset(c.dx - 4, c.dy - 4),
+            Offset(c.dx + 4, c.dy + 4), p);
+        canvas.drawLine(Offset(c.dx - 4, c.dy + 4),
+            Offset(c.dx + 4, c.dy - 4), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CaptionIconPainter old) =>
+      old.kind != kind || old.fg != fg || old.bg != bg;
+}
+
 /// 进度条：3px，完成段深金 / 未完成段浅灰——明暗分明
 class HairlineProgress extends StatelessWidget {
   final double frac;

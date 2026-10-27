@@ -11,6 +11,35 @@ class SculptPainter extends CustomPainter {
   final OrbModel m;
   final ui.Image? sculpt;
 
+  // —— 每帧复用资源 ——
+  // 背景整层烘成 ui.Image（含高斯光带）；柔光/金珠/椭圆影的渐变
+  // shader 全部烘在「单位圆、原点中心」上，画时 translate+scale ——
+  // paint 与位置半径解耦，量化 alpha 作缓存键，全帧共享。
+  // 原实现逐帧 createShader 30+ 次、MaskFilter.blur 30+ 次。
+  final _fillP = Paint();
+  final _strokeP = Paint()..style = PaintingStyle.stroke;
+  final _imgP = Paint()..filterQuality = FilterQuality.high;
+  final Map<int, Paint> _glowP = {};
+  final Map<int, Paint> _beadP = {};
+  final Map<int, Paint> _shadowP = {};
+  Size _sz = Size.zero;
+  ui.Image? _bgImg;
+
+  /// 尺寸相关静态层烘焙：整层奶油背景（4 渐变 + 模糊光带）一次烘成图，
+  /// 仅窗口尺寸变化时重烘
+  void _ensureSize(Size size) {
+    if (_sz == size) return;
+    _sz = size;
+    _bgImg?.dispose();
+    _bgImg = null;
+    if (size.isEmpty) return;
+    final rec = ui.PictureRecorder();
+    _bg(Canvas(rec), size);
+    _bgImg = rec
+        .endRecording()
+        .toImageSync(size.width.ceil(), size.height.ceil());
+  }
+
   // —— 调色 ——
   static const ink = Color(0xFF1A1815);
   static const bgTop = Color(0xFFF1EDE5);
@@ -50,17 +79,15 @@ class SculptPainter extends CustomPainter {
         Offset(math.cos(psi) * rx * cosT - math.sin(psi) * ry * sinT,
             math.cos(psi) * rx * sinT + math.sin(psi) * ry * cosT);
 
-    _bg(canvas, size);
+    _ensureSize(size);
+    final bg = _bgImg;
+    if (bg != null) {
+      canvas.drawImage(bg, Offset.zero, _imgP);
+    } else {
+      _bg(canvas, size);
+    }
     // 雕塑背后一层极淡的冷灰晕，把白色玻璃从奶油底里分离出来
-    canvas.drawCircle(
-        C,
-        imgW * 0.62,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            const Color(0xFF9E9789).withValues(alpha: 0.16),
-            Colors.transparent,
-          ], stops: const [0, 1]).createShader(
-              Rect.fromCircle(center: C, radius: imgW * 0.62)));
+    _glow(canvas, C, const Color(0xFF9E9789), 0.16, imgW * 0.62);
     _floorShadow(canvas, C + para * -0.35, imgW, imgH, minS, m);
 
     // ═══ 粒子位置解算 ═══
@@ -125,15 +152,7 @@ class SculptPainter extends CustomPainter {
     _sculpture(canvas, C + para, imgW * sculptScale, imgH * sculptScale);
     // 吸纳光（安装进度反馈）：雕塑核心暖光
     if (m.bloom.x > 0.01) {
-      final rect = Rect.fromCircle(center: C, radius: imgW * 0.30);
-      canvas.drawCircle(
-          C,
-          imgW * 0.30,
-          Paint()
-            ..shader = RadialGradient(colors: [
-              goldHi.withValues(alpha: 0.30 * m.bloom.x),
-              Colors.transparent,
-            ]).createShader(rect));
+      _glow(canvas, C, goldHi, 0.30 * m.bloom.x, imgW * 0.30);
     }
 
     // ═══ 扫描光：沿轨道流过 ═══
@@ -226,29 +245,28 @@ class SculptPainter extends CustomPainter {
   void _floorShadow(Canvas canvas, Offset c, double imgW, double imgH,
       double minS, OrbModel m) {
     final lift = (1 - math.sin(m.t * 1.05) * 0.5).clamp(0.5, 1.5);
-    // 三层投影：贴身扁影 + 大范围环境影，都淡而宽——悬浮投影不是墨点
-    final rect = Rect.fromCenter(
-        center: c + Offset(0, imgH * 0.58),
-        width: imgW * 1.30 / lift, height: minS * 0.095 / lift);
-    canvas.drawOval(
-        rect,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            shadow.withValues(alpha: 0.115 * (2 - lift)),
-            shadow.withValues(alpha: 0.0),
-          ]).createShader(rect)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, minS * 0.04));
-    final wide = Rect.fromCenter(
-        center: c + Offset(0, imgH * 0.62),
-        width: imgW * 2.05 / lift, height: minS * 0.20 / lift);
-    canvas.drawOval(
-        wide,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            shadow.withValues(alpha: 0.07 * (2 - lift)),
-            Colors.transparent,
-          ]).createShader(wide)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, minS * 0.05));
+    // 两层投影：贴身扁影 + 大范围环境影。原实现叠 MaskFilter.blur 逐帧高斯；
+    // 径向渐变本身已淡出到透明，去模糊后视觉几乎无差，每帧省两次大模糊
+    _ovalShadow(canvas, c + Offset(0, imgH * 0.58),
+        imgW * 1.30 / lift, minS * 0.095 / lift, 0.115 * (2 - lift));
+    _ovalShadow(canvas, c + Offset(0, imgH * 0.62),
+        imgW * 2.05 / lift, minS * 0.20 / lift, 0.07 * (2 - lift));
+  }
+
+  /// 径向渐变椭圆影：单位圆 shader + 非均匀缩放成椭圆，alpha 1/64 量化入键
+  void _ovalShadow(Canvas canvas, Offset c, double w, double h, double a) {
+    if (a <= 0.003 || w <= 0 || h <= 0) return;
+    final aQ = (a * 64).round().clamp(1, 255);
+    final paint = _shadowP.putIfAbsent(aQ, () => Paint()
+      ..shader = RadialGradient(colors: [
+        shadow.withValues(alpha: aQ / 64),
+        Colors.transparent,
+      ]).createShader(Rect.fromCircle(center: Offset.zero, radius: 1)));
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(w / 2, h / 2);
+    canvas.drawCircle(Offset.zero, 1, paint);
+    canvas.restore();
   }
 
   // ═════════ 雕塑：抠图绘制 ═════════
@@ -260,7 +278,7 @@ class SculptPainter extends CustomPainter {
         img,
         Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
         dst,
-        Paint()..filterQuality = FilterQuality.high);
+        _imgP);
   }
 
   // ═════════ 轨道线：按前后半分开画，得到遮挡景深 ═════════
@@ -288,8 +306,7 @@ class SculptPainter extends CustomPainter {
     }
     canvas.drawPath(
         path,
-        Paint()
-          ..style = PaintingStyle.stroke
+        _strokeP
           ..strokeWidth = 0.9
           ..color = gold.withValues(alpha: alpha));
   }
@@ -323,8 +340,7 @@ class SculptPainter extends CustomPainter {
     }
     canvas.drawPath(
         path,
-        Paint()
-          ..style = PaintingStyle.stroke
+        _strokeP
           ..strokeWidth = 0.7
           ..color = gold.withValues(alpha: back ? 0.10 : 0.20));
     // 流浪金珠：沿外轨道缓行（与 26 节点无关，纯雕塑感）
@@ -337,13 +353,13 @@ class SculptPainter extends CustomPainter {
       final top = c + Offset(0, -minS * 0.34);
       canvas.drawLine(
           top, top + Offset(0, minS * 0.055),
-          Paint()
+          _strokeP
             ..strokeWidth = 0.8
             ..color = ink.withValues(alpha: 0.14));
       canvas.drawRect(
           Rect.fromCenter(center: top - Offset(0, minS * 0.008),
               width: 2.5, height: 2.5),
-          Paint()..color = ink.withValues(alpha: 0.20));
+          _fillP..color = ink.withValues(alpha: 0.20));
     }
   }
 
@@ -370,7 +386,7 @@ class SculptPainter extends CustomPainter {
           _dashedRing(canvas, pos, r * 1.05,
               const Color(0xFF6B675C).withValues(alpha: 0.85 * alpha));
           canvas.drawCircle(pos, r * 0.18,
-              Paint()..color = const Color(0xFF6B675C)
+              _fillP..color = const Color(0xFF6B675C)
                   .withValues(alpha: 0.9 * alpha));
           break;
         }
@@ -379,13 +395,12 @@ class SculptPainter extends CustomPainter {
         canvas.drawCircle(
             pos,
             r * 1.05,
-            Paint()
-              ..style = PaintingStyle.stroke
+            _strokeP
               ..strokeWidth = 1.7
               ..color = missing.withValues(alpha: 0.95 * alpha));
         canvas.drawCircle(
             pos + Offset(-r * 0.3, -r * 0.35), r * 0.22,
-            Paint()..color = Colors.white.withValues(alpha: 0.55 * alpha));
+            _fillP..color = Colors.white.withValues(alpha: 0.55 * alpha));
       case PStatus.outdated:
         if (manual) {
           _dashedRing(canvas, pos, r * 1.05,
@@ -397,8 +412,7 @@ class SculptPainter extends CustomPainter {
         canvas.drawCircle(
             pos,
             r * 1.05,
-            Paint()
-              ..style = PaintingStyle.stroke
+            _strokeP
               ..strokeWidth = 1.4
               ..color = amber.withValues(alpha: 0.9 * alpha));
         _goldBead(canvas, pos, r * 0.55, alpha, tint: amber);
@@ -406,25 +420,23 @@ class SculptPainter extends CustomPainter {
         // 墨绿深点 + 奶油描边
         _glow(canvas, pos, green, 0.16 + p.flash * 0.20, r * 2.6);
         canvas.drawCircle(pos, r * 0.82,
-            Paint()..color = green.withValues(alpha: 0.95 * alpha));
+            _fillP..color = green.withValues(alpha: 0.95 * alpha));
         canvas.drawCircle(
             pos,
             r * 0.82,
-            Paint()
-              ..style = PaintingStyle.stroke
+            _strokeP
               ..strokeWidth = 0.8
               ..color = bgTop.withValues(alpha: 0.7 * alpha));
         canvas.drawCircle(
             pos + Offset(-r * 0.22, -r * 0.26), r * 0.2,
-            Paint()..color = Colors.white.withValues(alpha: 0.5 * alpha));
+            _fillP..color = Colors.white.withValues(alpha: 0.5 * alpha));
       case PStatus.checking:
         _glow(canvas, pos, goldHi, 0.40, r * 3.0);
         _goldBead(canvas, pos, r * 0.9, alpha);
         canvas.drawCircle(
             pos,
             r * 1.5,
-            Paint()
-              ..style = PaintingStyle.stroke
+            _strokeP
               ..strokeWidth = 1
               ..color = gold.withValues(alpha: 0.55 * alpha));
       case PStatus.pending:
@@ -436,8 +448,7 @@ class SculptPainter extends CustomPainter {
       canvas.drawCircle(
           pos,
           r * (1.25 + (1 - p.flash) * 2.4),
-          Paint()
-            ..style = PaintingStyle.stroke
+          _strokeP
             ..strokeWidth = 1.3 * p.flash
             ..color = goldHi.withValues(alpha: 0.6 * p.flash));
     }
@@ -446,8 +457,7 @@ class SculptPainter extends CustomPainter {
   /// 虚线圆环：手动项专用线型
   void _dashedRing(Canvas canvas, Offset pos, double r, Color color) {
     const segs = 8, gapRatio = 0.38;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
+    final paint = _strokeP
       ..strokeWidth = 1.3
       ..color = color;
     final rect = Rect.fromCircle(center: pos, radius: r);
@@ -458,40 +468,54 @@ class SculptPainter extends CustomPainter {
     }
   }
 
+  /// 球面金珠：光位左上的三段径向渐变。shader 烘在单位空间（原点中心、
+  /// 光位 (-0.35,-0.4)、梯度半径 2），画时 translate+scale(r)——
+  /// paint 只依赖 (tint, alpha量化)，26+ 颗/帧共享缓存
   void _goldBead(Canvas canvas, Offset pos, double r, double alpha,
       {Color tint = gold}) {
-    final lp = pos + Offset(-r * 0.35, -r * 0.4);
-    canvas.drawCircle(
-        pos,
-        r,
-        Paint()
-          ..shader = ui.Gradient.radial(lp, r * 2.0, [
-            const Color(0xFFFFFDF2),
-            tint,
-            goldDark,
-          ], const [0, 0.55, 1])
-          ..color = Colors.white.withValues(alpha: alpha));
+    final aQ = (alpha.clamp(0.0, 1.0) * 32).round();
+    if (aQ <= 0 || r <= 0) return;
+    final key = (tint.toARGB32() << 6) | aQ;
+    final paint = _beadP.putIfAbsent(key, () => Paint()
+      ..shader = ui.Gradient.radial(
+          const Offset(-0.35, -0.4), 2.0, [
+        const Color(0xFFFFFDF2).withValues(alpha: aQ / 32),
+        tint.withValues(alpha: aQ / 32),
+        goldDark.withValues(alpha: aQ / 32),
+      ], const [0, 0.55, 1]));
+    canvas.save();
+    canvas.translate(pos.dx, pos.dy);
+    canvas.scale(r);
+    canvas.drawCircle(Offset.zero, 1, paint);
+    canvas.restore();
     canvas.drawCircle(
         pos + Offset(-r * 0.3, -r * 0.36), r * 0.26,
-        Paint()..color = Colors.white.withValues(alpha: 0.85 * alpha));
+        _fillP..color = Colors.white.withValues(alpha: 0.85 * alpha));
   }
 
-  void _glow(Canvas canvas, Offset pos, Color c, double a, double rr) =>
-      canvas.drawCircle(
-          pos,
-          rr,
-          Paint()
-            ..shader = RadialGradient(colors: [
-              c.withValues(alpha: a),
-              Colors.transparent,
-            ]).createShader(Rect.fromCircle(center: pos, radius: rr)));
+  /// 中心向四周淡出的柔光：单位圆 shader + 缩放，(颜色, alpha量化) 共享缓存
+  void _glow(Canvas canvas, Offset pos, Color c, double a, double rr) {
+    if (a <= 0.003 || rr <= 0) return;
+    final aQ = (a * 32).round().clamp(1, 63);
+    final key = (c.toARGB32() << 6) | aQ;
+    final paint = _glowP.putIfAbsent(key, () => Paint()
+      ..shader = RadialGradient(colors: [
+        c.withValues(alpha: aQ / 32),
+        Colors.transparent,
+      ]).createShader(Rect.fromCircle(center: Offset.zero, radius: 1)));
+    canvas.save();
+    canvas.translate(pos.dx, pos.dy);
+    canvas.scale(rr);
+    canvas.drawCircle(Offset.zero, 1, paint);
+    canvas.restore();
+  }
 
   // ═════════ 尘埃（已装项退远）═════════
   void _dustDot(Canvas canvas, _N s) {
     final tw = 0.5 + 0.5 * math.sin(m.t * 1.7 + s.p.seed * 3);
     final a = (0.10 + 0.16 * tw) * s.p.dust.x.clamp(0, 1);
     canvas.drawCircle(s.pos, 1.6 + tw,
-        Paint()..color = gold.withValues(alpha: a));
+        _fillP..color = gold.withValues(alpha: a));
   }
 
   // ═════════ 扫描光：一道暖光沿轨道流过 ═════════
@@ -500,16 +524,15 @@ class SculptPainter extends CustomPainter {
     var idx = m.particles.indexWhere((p) => p.status == PStatus.checking);
     if (idx < 0) idx = m.doneCount.clamp(0, n - 1);
     final psiHead = idx * 2 * math.pi / n + m.t * 0.02;
-    // 尾迹：一串渐隐的光点
+    // 尾迹：一串渐隐的光点（半径/alpha 微调代替逐点 1.6px 高斯——
+    // 原实现 22 次 MaskFilter/帧，占掉 painter 大半模糊预算）
     for (var k = 22; k >= 1; k--) {
       final f = 1 - k / 22;
       final pt = orbitPt(psiHead - k * 0.055);
       canvas.drawCircle(
           pt,
-          2.6 * f + 0.4,
-          Paint()
-            ..color = goldHi.withValues(alpha: 0.38 * f)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6));
+          2.8 * f + 0.5,
+          _fillP..color = goldHi.withValues(alpha: 0.40 * f));
     }
     final head = orbitPt(psiHead);
     _glow(canvas, head, const Color(0xFFFFF3D0), 0.85, 26);
@@ -525,7 +548,7 @@ class SculptPainter extends CustomPainter {
       final f = 1 - k / 14;
       final pt = orbitPt(psi - k * 0.05);
       canvas.drawCircle(pt, 1.8 * f + 0.3,
-          Paint()..color = goldHi.withValues(alpha: 0.16 * f));
+          _fillP..color = goldHi.withValues(alpha: 0.16 * f));
     }
     _glow(canvas, orbitPt(psi), goldHi, 0.4, 14);
   }
@@ -543,8 +566,7 @@ class SculptPainter extends CustomPainter {
           Rect.fromCenter(center: Offset.zero,
               width: rx * 2 * (0.9 + age * 0.5),
               height: ry * 2 * (0.9 + age * 0.5)),
-          Paint()
-            ..style = PaintingStyle.stroke
+          _strokeP
             ..strokeWidth = 1.4 * f
             ..color = gold.withValues(alpha: r.alpha * 0.5 * f));
       canvas.restore();
@@ -557,19 +579,12 @@ class SculptPainter extends CustomPainter {
       canvas.drawOval(
           Rect.fromCenter(center: Offset.zero,
               width: rx * 2 * (1 + s * 0.9), height: ry * 2 * (1 + s * 0.9)),
-          Paint()
-            ..style = PaintingStyle.stroke
+          _strokeP
             ..strokeWidth = 2.2 * (1 - s)
             ..color = goldHi.withValues(alpha: 0.55 * (1 - s)));
       canvas.restore();
       // 完成瞬间的整屏柔光
-      canvas.drawRect(
-          Rect.fromCircle(center: c, radius: rx * 1.6),
-          Paint()
-            ..shader = RadialGradient(colors: [
-              warm.withValues(alpha: 0.30 * (1 - s)),
-              Colors.transparent,
-            ]).createShader(Rect.fromCircle(center: c, radius: rx * 1.6)));
+      _glow(canvas, c, warm, 0.30 * (1 - s), rx * 1.6);
     }
   }
 
@@ -581,9 +596,7 @@ class SculptPainter extends CustomPainter {
       canvas.drawCircle(
           tr[i],
           5.5 * f * (1 - s.p.flyT * 0.25) + 0.5,
-          Paint()
-            ..color = gold.withValues(alpha: 0.35 * f)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+          _fillP..color = gold.withValues(alpha: 0.35 * f));
     }
     _glow(canvas, s.pos, goldHi, 0.7, 20);
     _goldBead(canvas, s.pos, 5.4, 1.0);

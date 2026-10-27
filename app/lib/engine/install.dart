@@ -1,9 +1,11 @@
 // 安装引擎：winget 优先 → 官方直链兜底 → 手动链接；设置项走 command 直开（无下载）。
+import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import '../ui/strings.dart';
 import 'catalog_model.dart';
+import 'env_path.dart';
 import 'log.dart';
 
 enum InstallOutcome { success, needReboot, alreadyNewer, failed, manualOnly }
@@ -19,7 +21,9 @@ class InstallEvent {
 class Installer {
   static Future<bool> get hasWinget async {
     try {
-      final r = await Process.run('winget', ['--version'], runInShell: true);
+      final r = await Process.run('winget', ['--version'],
+              runInShell: true, environment: EnvPath.environment())
+          .timeout(const Duration(seconds: 15));
       return r.exitCode == 0;
     } catch (_) {
       return false;
@@ -60,7 +64,7 @@ class Installer {
           'install', '--id', c.install.winget!,
           '--silent', '--force', '--accept-source-agreements',
           '--accept-package-agreements', '--disable-interactivity'
-        ]);
+        ], log);
         outcome = _mapExit(code);
         detail = S.fmt('evWingetExit', {'code': code});
         await log.write('winget_done', {'id': c.id, 'exit': code});
@@ -70,16 +74,29 @@ class Installer {
       if (outcome == InstallOutcome.failed && c.install.download != null) {
         final d = c.install.download!;
         yield InstallEvent(c.id, 'downloading', S.of('evDownloading'));
-        final file = await _download(d.url, d.name ??
-            '${c.id}${d.url.endsWith('.msi') ? '.msi' : '.exe'}',
-            (pr) {}, log);
+        // 下载在后台进行；每 350ms 轮询进度发事件 → UI 显示百分比
+        var lastPr = 0.0;
+        var dlDone = false;
+        final dlFuture = _download(d.url, d.name ??
+                '${c.id}${d.url.endsWith('.msi') ? '.msi' : '.exe'}',
+            (pr) => lastPr = pr, log)
+            .whenComplete(() => dlDone = true);
+        while (!dlDone) {
+          await Future.delayed(const Duration(milliseconds: 350));
+          if (lastPr > 0) {
+            yield InstallEvent(c.id, 'downloading',
+                S.fmt('evDlPct', {'pct': (lastPr * 100).round()}), lastPr);
+          }
+        }
+        final file = await dlFuture;
         if (file != null) {
           yield InstallEvent(c.id, 'installing', S.of('evInstalling'));
           final code = d.msiArgs != null
               ? await _runCmdLine(
                   'msiexec ${d.msiArgs!.replaceAll('{file}', '"${file.path}"')}',
                   log)
-              : await _run(file.path, d.args.isEmpty ? [] : d.args.split(' '));
+              : await _run(
+                  file.path, d.args.isEmpty ? [] : d.args.split(' '), log);
           outcome = _mapExit(code);
           detail = S.fmt('evPkgExit', {'code': code});
           await log.write('pkg_done', {'id': c.id, 'exit': code, 'src': d.url});
@@ -115,15 +132,28 @@ class Installer {
     }
   }
 
-  static Future<int> _run(String exe, List<String> args) async {
-    final r = await Process.run(exe, args, runInShell: true,
-        stdoutEncoding: systemEncoding, stderrEncoding: systemEncoding);
-    return r.exitCode;
+  /// 通用子进程：注入重建 PATH（winget/安装器可能是启动后新装的）。
+  /// 超时只放弃等待——Process.run 无法强杀已拉起的子进程，记日志后按失败走。
+  static Future<int> _run(String exe, List<String> args, KitLog log,
+      {Duration timeout = const Duration(minutes: 10)}) async {
+    try {
+      final r = await Process.run(exe, args, runInShell: true,
+              stdoutEncoding: systemEncoding, stderrEncoding: systemEncoding,
+              environment: EnvPath.environment())
+          .timeout(timeout);
+      return r.exitCode;
+    } on TimeoutException {
+      await log.write('proc_timeout',
+          {'exe': exe, 'args': args.join(' '), 'timeout_s': timeout.inSeconds});
+      return -2;
+    }
   }
 
   /// 执行一整行 cmd 命令（可含引号/&&/||）：写成临时 .cmd 再跑——
   /// 直接 `cmd /c "<含引号命令>"` 会被外层 shell 二次拆串弄坏参数。
-  static Future<int> _runCmdLine(String command, KitLog log) async {
+  /// 注入重建 PATH（msiexec/dism 在系统 Path，一致性起见统一注入）。
+  static Future<int> _runCmdLine(String command, KitLog log,
+      {Duration timeout = const Duration(minutes: 10)}) async {
     File? bat;
     try {
       final dir = Directory(p.join(
@@ -131,11 +161,19 @@ class Installer {
       dir.createSync(recursive: true);
       bat = File(p.join(dir.path,
           'cmd_${DateTime.now().millisecondsSinceEpoch}.cmd'));
-      await bat.writeAsString(
-          '@echo off\r\n$command\r\nexit /b %errorlevel%\r\n');
+      // 关键：cmd.exe 按 OEM 代码页解析 .cmd；UTF-8 写入会让 CJK 路径（如
+      // 中文用户名 %TEMP% 下的 msiexec {file}）变乱码 → 必须用 systemEncoding
+      await bat.writeAsBytes(systemEncoding.encode(
+          '@echo off\r\n$command\r\nexit /b %errorlevel%\r\n'));
       final r = await Process.run(bat.path, const [], runInShell: true,
-          stdoutEncoding: systemEncoding, stderrEncoding: systemEncoding);
+              stdoutEncoding: systemEncoding, stderrEncoding: systemEncoding,
+              environment: EnvPath.environment())
+          .timeout(timeout);
       return r.exitCode;
+    } on TimeoutException {
+      await log.write('cmd_timeout',
+          {'run': command, 'timeout_s': timeout.inSeconds});
+      return -2;
     } catch (e) {
       await log.write('cmd_error', {'run': command, 'err': '$e'});
       return -1;
@@ -146,29 +184,51 @@ class Installer {
     }
   }
 
+  /// 下载：连接 30s 超时 + 流空闲 120s 超时（Stream.timeout 按事件间隔计），
+  /// 异常/5xx 失败自动重试一次；onProgress 回报 0-1 供 UI 显示百分比。
   static Future<File?> _download(String url, String name,
       void Function(double) onProgress, KitLog log) async {
-    try {
-      final dir = Directory(p.join(
-          Platform.environment['TEMP'] ?? '.', 'wanji-kit'));
-      dir.createSync(recursive: true);
-      final file = File(p.join(dir.path, name));
-      final req = await http.Client().send(http.Request('GET', Uri.parse(url)));
-      if (req.statusCode != 200) return null;
-      final sink = file.openWrite();
-      final total = req.contentLength ?? 0;
-      var got = 0;
-      await for (final chunk in req.stream) {
-        sink.add(chunk);
-        got += chunk.length;
-        if (total > 0) onProgress(got / total);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final client = http.Client();
+      try {
+        final dir = Directory(p.join(
+            Platform.environment['TEMP'] ?? '.', 'wanji-kit'));
+        dir.createSync(recursive: true);
+        final file = File(p.join(dir.path, name));
+        final req = await client
+            .send(http.Request('GET', Uri.parse(url)))
+            .timeout(const Duration(seconds: 30));
+        if (req.statusCode != 200) {
+          await log.write('download_http',
+              {'url': url, 'code': req.statusCode, 'attempt': attempt + 1});
+          // 5xx 值得重试一次；4xx 是死链直接放弃
+          if (req.statusCode >= 500 && attempt == 0) {
+            client.close();
+            continue;
+          }
+          return null;
+        }
+        final sink = file.openWrite();
+        final total = req.contentLength ?? 0;
+        var got = 0;
+        await for (final chunk in req.stream
+            .timeout(const Duration(seconds: 120))) {
+          sink.add(chunk);
+          got += chunk.length;
+          if (total > 0) onProgress(got / total);
+        }
+        await sink.close();
+        return file;
+      } catch (e) {
+        await log.write('download_error',
+            {'url': url, 'attempt': attempt + 1, 'err': '$e'});
+        if (attempt == 1) return null;
+        await Future.delayed(const Duration(seconds: 1));
+      } finally {
+        client.close();
       }
-      await sink.close();
-      return file;
-    } catch (e) {
-      await log.write('download_error', {'url': url, 'err': '$e'});
-      return null;
     }
+    return null;
   }
 
   static InstallOutcome _mapExit(int code) => switch (code) {
