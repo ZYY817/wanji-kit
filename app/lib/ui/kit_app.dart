@@ -1212,10 +1212,10 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
             style: KT.ui.copyWith(fontSize: 13, color: K.fg2))),
         const SizedBox(width: 10),
         // 渠道标签：winget/download/command 任一即「自动」，仅 manual 为「手动」；
-        // 定宽 64 —— EN「MANUAL」12px 不折行，列缘竖直对齐
-        SizedBox(width: 64, child: Container(
+        // 定宽 68 —— EN「MANUAL」12px 不折行不切边，列缘竖直对齐
+        SizedBox(width: 68, child: Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: 4, vertical: 1.5),
+              horizontal: 3, vertical: 1.5),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
