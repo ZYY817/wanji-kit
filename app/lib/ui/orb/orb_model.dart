@@ -1,6 +1,7 @@
 // ORB 生命体模型：粒子弹簧权重系统。
 // 每个粒子的位置不是关键帧，而是几组弹簧权重（spread/ring/front/dust/fly）
 // 在解算后的基础坐标之间插值——状态切换 = 改目标值，天然连续、可打断。
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -104,14 +105,26 @@ class OrbModel extends ChangeNotifier {
 
   // —— 系统降级 ——
   bool reduceMotion = false;   // MediaQuery.disableAnimations → 关漂浮/漂移
-  void setPaused(bool p) => p ? _ticker.stop() : _ticker.start();
+  bool _paused = false;
+  void setPaused(bool p) {
+    if (p) {
+      _paused = true;
+      _calmTimer?.cancel();
+      _calmTimer = null;
+      _ticker.stop();
+    } else {
+      _paused = false;
+      if (!_ticker.isActive) _ticker.start();
+    }
+  }
 
-  // —— 低功耗：静稳相位（待机/结果/完成）落定后降拍 ~30fps ——
-  // 扫描/安装相位保持满帧。ticker 仍按 vsync 走，但累积 dt 到阈值才
-  // 解算+重绘——动画时长不变，只牺牲帧率，视觉几乎无损。
+  // —— 低功耗：静稳相位（待机/结果/完成）落定后切 30ms Timer ——
+  // 扫描/安装相位保持 vsync 满帧；入场形变期（前 _calmDelay 秒）也满帧。
+  // 静稳时直接把 Ticker 停掉——vsync 不再唤醒调度器，连帧都不排，
+  // CPU/GPU 降到「真正 30fps」而不是 60fps 空转一半。
   static const _calmDelay = 3.5;   // 相位稳定多少秒后进入低频
-  static const _lowStep = 1 / 30;  // 低频节拍（秒/帧）
-  double _accum = 0;
+  Timer? _calmTimer;
+  double _lastWall = 0;
   bool get _calm => phase == OrbPhase.idle ||
       phase == OrbPhase.result || phase == OrbPhase.complete;
 
@@ -128,19 +141,23 @@ class OrbModel extends ChangeNotifier {
     var dt = now - _last;
     _last = now;
     if (dt <= 0 || dt > 0.05) dt = 0.016;
-    // 静稳相位降拍：dt 照积，攒够一拍才解算——相位切换后的入场
-    // 形变（前 _calmDelay 秒）与扫描/安装全程仍是满帧
-    if (_calm && t - phaseStart > _calmDelay) {
-      _accum += dt;
-      if (_accum < _lowStep) return;
-      dt = _accum;
-      _accum = 0;
-    } else {
-      _accum = 0;
-    }
     t += dt;
     _step(dt);
     notifyListeners();
+    // 静稳相位：停 vsync，换 Timer 续拍——下次相位变更时 _setPhase 叫醒
+    if (_calm && t - phaseStart > _calmDelay && _calmTimer == null) {
+      _ticker.stop();
+      _lastWall = DateTime.now().microsecondsSinceEpoch / 1e6;
+      _calmTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+        final w = DateTime.now().microsecondsSinceEpoch / 1e6;
+        var dt = w - _lastWall;
+        _lastWall = w;
+        if (dt <= 0 || dt > 0.1) dt = 0.033;
+        t += dt;
+        _step(dt);
+        notifyListeners();
+      });
+    }
   }
 
   void _step(double dt) {
@@ -189,6 +206,10 @@ class OrbModel extends ChangeNotifier {
   void _setPhase(OrbPhase p) {
     phase = p;
     phaseStart = t;
+    // 相位变更必醒：取消静稳 Timer、恢复 vsync 满帧（dt 越界会被钳制）
+    _calmTimer?.cancel();
+    _calmTimer = null;
+    if (!_paused && !_ticker.isActive) _ticker.start();
   }
 
   /// 待机 → 扫描：球体炸散成卫星
@@ -380,6 +401,7 @@ class OrbModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _calmTimer?.cancel();
     _ticker.dispose();
     super.dispose();
   }

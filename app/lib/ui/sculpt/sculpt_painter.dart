@@ -25,6 +25,66 @@ class SculptPainter extends CustomPainter {
   Size _sz = Size.zero;
   ui.Image? _bgImg;
 
+  // 轨道/装饰弧烘层：形状只随（尺寸, idle 档, DPR）变——每帧两次
+  // drawImage 替代 ~330 段 lineTo 重建 + 4 次 drawPath 栅格化。
+  ui.Image? _arcsBack, _arcsFront;
+  bool _arcsIdle = false;
+  double _arcsDpr = 0;
+  double _arcW = 0, _arcH = 0;
+
+  // 节点解算槽位：N 粒复用，不再每帧新配 _N 对象
+  final List<_N> _solved = [];
+  int _sn = 0;
+
+  // 节点微编号：01-32 mono 5.4px 两套（普通 17% / 已点亮 30%）。
+  // 编号跟节点走——轨道有 0.02 rad/s 漂移，烘层位置会失配，
+  // 只能每帧画；但 TextPainter 只建一次（layout 成本不付两遍）
+  final List<TextPainter> _numFaint = [];
+  final List<TextPainter> _numLit = [];
+  int _numN = -1;
+
+  void _ensureNums(int n) {
+    if (_numN == n) return;
+    for (final tp in _numFaint) {
+      tp.dispose();
+    }
+    for (final tp in _numLit) {
+      tp.dispose();
+    }
+    _numFaint.clear();
+    _numLit.clear();
+    _numN = n;
+    for (var i = 0; i < n; i++) {
+      final s = (i + 1).toString().padLeft(2, '0');
+      _numFaint.add(_numTp(s, 0.17));
+      _numLit.add(_numTp(s, 0.30));
+    }
+  }
+
+  TextPainter _numTp(String s, double a) => TextPainter(
+      text: TextSpan(
+          text: s,
+          style: TextStyle(
+              fontFamily: 'Consolas',
+              fontSize: 5.4,
+              letterSpacing: 0.5,
+              height: 1,
+              color: const Color(0xFF8A8578).withValues(alpha: a))),
+      textDirection: TextDirection.ltr)
+    ..layout();
+
+  /// 编号画在节点外侧（径向推出 ~13px），随节点落定位置走
+  void _nodeNum(Canvas canvas, _N s, Offset c) {
+    final i = s.p.index;
+    if (i < 0 || i >= _numN) return;
+    final tp = s.p.status == PStatus.pending ? _numFaint[i] : _numLit[i];
+    final dir = s.pos - c;
+    final d = dir.distance;
+    if (d < 1) return;
+    final at = s.pos + dir / d * 13.5;
+    tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
+  }
+
   /// 尺寸相关静态层烘焙：整层奶油背景（4 渐变 + 模糊光带）一次烘成图，
   /// 仅窗口尺寸变化时重烘
   void _ensureSize(Size size) {
@@ -32,12 +92,66 @@ class SculptPainter extends CustomPainter {
     _sz = size;
     _bgImg?.dispose();
     _bgImg = null;
+    _arcsBack?.dispose();
+    _arcsBack = null;
+    _arcsFront?.dispose();
+    _arcsFront = null;
     if (size.isEmpty) return;
     final rec = ui.PictureRecorder();
     _bg(Canvas(rec), size);
     _bgImg = rec
         .endRecording()
         .toImageSync(size.width.ceil(), size.height.ceil());
+  }
+
+  /// 轨道弧烘层：以轨道中心为原点局部坐标、按设备 DPR 高清栅格化；
+  /// 仅尺寸/idle 档/DPR 变化才重烘。流浪金珠是活的，留在帧绘里。
+  void _ensureArcs(Size size, bool idle) {
+    if (size.isEmpty) return;
+    final dpr =
+        ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0;
+    if (_arcsBack != null && _arcsIdle == idle && _arcsDpr == dpr) return;
+    _arcsIdle = idle;
+    _arcsDpr = dpr;
+    final minS = math.min(size.width, size.height);
+    _arcW = minS * 0.96; // 覆盖外侧金轨道(±0.455) + 描边余量
+    _arcH = minS * 0.78; // 覆盖顶部刻度(-0.34) + 轨道下缘
+    final c = Offset(_arcW / 2, _arcH / 2);
+    _arcsBack?.dispose();
+    _arcsFront?.dispose();
+    _arcsBack = _bakeLayer(dpr, (cv) {
+      _orbitArc(
+          cv, c, minS * 0.395, minS * 0.395 * 0.415, -0.26, true,
+          idle ? 0.10 : 0.16);
+      _decoArcPath(cv, c, minS, true);
+    });
+    _arcsFront = _bakeLayer(dpr, (cv) {
+      _decoArcPath(cv, c, minS, false);
+      _orbitArc(
+          cv, c, minS * 0.395, minS * 0.395 * 0.415, -0.26, false,
+          idle ? 0.14 : 0.22);
+      _axisTick(cv, c, minS);
+      _gaugeTicks(cv, c, minS);
+    });
+  }
+
+  ui.Image _bakeLayer(double dpr, void Function(Canvas) draw) {
+    final rec = ui.PictureRecorder();
+    final cv = Canvas(rec)..scale(dpr);
+    draw(cv);
+    return rec
+        .endRecording()
+        .toImageSync((_arcW * dpr).ceil(), (_arcH * dpr).ceil());
+  }
+
+  /// 烘层就位：以轨道中心 C 对齐绘制（图像按 DPR 烘、目标矩形是逻辑尺寸）
+  void _drawLayer(Canvas canvas, ui.Image img, Offset c) {
+    canvas.drawImageRect(
+        img,
+        Rect.fromLTWH(
+            0, 0, img.width.toDouble(), img.height.toDouble()),
+        Rect.fromCenter(center: c, width: _arcW, height: _arcH),
+        _imgP);
   }
 
   // —— 调色 ——
@@ -80,6 +194,7 @@ class SculptPainter extends CustomPainter {
             math.cos(psi) * rx * sinT + math.sin(psi) * ry * cosT);
 
     _ensureSize(size);
+    _ensureArcs(size, idle);
     final bg = _bgImg;
     if (bg != null) {
       canvas.drawImage(bg, Offset.zero, _imgP);
@@ -93,7 +208,28 @@ class SculptPainter extends CustomPainter {
     // ═══ 粒子位置解算 ═══
     final n = m.particles.length;
     final drift = m.t * 0.02 * motion;
-    final solved = <_N>[];
+    _sn = 0;
+    _N slot(OrbParticle p, Offset pos, double depth, bool front, int fIdx) {
+      if (_sn < _solved.length) {
+        final s = _solved[_sn++];
+        s.p = p;
+        s.pos = pos;
+        s.depth = depth;
+        s.front = front;
+        s.frontIdx = fIdx;
+        return s;
+      }
+      final s = _N(p, pos, depth, front, fIdx);
+      _solved.add(s);
+      _sn++;
+      return s;
+    }
+
+    // 微编号只在待机/扫描相位出现（结果态缺失珠前移，编号会散）
+    final showNums =
+        m.phase == OrbPhase.idle || m.phase == OrbPhase.scanning;
+    if (showNums) _ensureNums(m.particles.length);
+
     var fixIdx = 0;
     final fixTotal = m.particles.where((p) => p.fixable).length;
     for (final p in m.particles) {
@@ -133,18 +269,19 @@ class SculptPainter extends CustomPainter {
         depth = 2;
       }
       m.lastPos[p.index] = pos - C;
-      solved.add(_N(p, pos, depth, front, fIdx));
+      slot(p, pos, depth, front, fIdx);
     }
 
-    // ═══ 后半轨道线 + 后半节点（被雕塑遮挡）═══
-    _orbitArc(canvas, C, rx, ry, tilt, true, idle ? 0.10 : 0.16);
-    _decoArcs(canvas, C, minS, true);
-    for (final s in solved) {
+    // ═══ 后半轨道线（烘层）+ 后半节点（被雕塑遮挡）═══
+    final arcsBack = _arcsBack;
+    if (arcsBack != null) _drawLayer(canvas, arcsBack, C);
+    for (final s in _solved.take(_sn)) {
       if (s.p.dust.x > 0.4 && !s.p.flying) _dustDot(canvas, s);
     }
-    for (final s in solved) {
+    for (final s in _solved.take(_sn)) {
       if (s.depth <= 0 && !s.front && !s.p.flying && s.p.dust.x <= 0.4) {
         _node(canvas, s, minS: minS);
+        if (showNums) _nodeNum(canvas, s, C);
       }
     }
 
@@ -162,12 +299,14 @@ class SculptPainter extends CustomPainter {
       _idleGlint(canvas, orbitPt, n);
     }
 
-    // ═══ 前半轨道 + 前半节点 ═══
-    _decoArcs(canvas, C, minS, false);
-    _orbitArc(canvas, C, rx, ry, tilt, false, idle ? 0.14 : 0.22);
-    for (final s in solved) {
+    // ═══ 前半轨道（烘层）+ 流浪金珠 + 前半节点 ═══
+    final arcsFront = _arcsFront;
+    if (arcsFront != null) _drawLayer(canvas, arcsFront, C);
+    _wanderBead(canvas, C, minS);
+    for (final s in _solved.take(_sn)) {
       if (s.depth > 0 && !s.front && !s.p.flying && s.p.dust.x <= 0.4) {
         _node(canvas, s, minS: minS);
+        if (showNums) _nodeNum(canvas, s, C);
       }
     }
 
@@ -175,13 +314,13 @@ class SculptPainter extends CustomPainter {
     _ripples(canvas, C, rx, ry, tilt);
     // ═══ 前移的缺失节点：只显状态（可装=赤陶环/手动=灰虚线环），
     //     不印名字——名称/大小/指引全在右侧清单 ═══
-    for (final s in solved) {
+    for (final s in _solved.take(_sn)) {
       if (s.front && !s.p.flying) {
         _node(canvas, s, scale: 1.5, minS: minS);
       }
     }
     // ═══ 飞行彗星 ═══
-    for (final s in solved) {
+    for (final s in _solved.take(_sn)) {
       if (s.p.flying) {
         s.p.trail.insert(0, s.pos);
         if (s.p.trail.length > 14) s.p.trail.removeLast();
@@ -239,6 +378,21 @@ class SculptPainter extends CustomPainter {
               width: size.width * 1.6, height: size.height * 0.16))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40));
     canvas.restore();
+    // 图纸点阵：80px 间距 1px 点，alpha 极低——3 米外不可见，近看有网格信息。
+    // 烘进 _bgImg，零帧成本
+    final pts = <Offset>[];
+    const step = 80.0;
+    for (var x = step * 0.5; x < size.width; x += step) {
+      for (var y = step * 0.5; y < size.height; y += step) {
+        pts.add(Offset(x, y));
+      }
+    }
+    canvas.drawPoints(
+        ui.PointMode.points, pts,
+        Paint()
+          ..color = const Color(0xFFB9B2A2).withValues(alpha: 0.07)
+          ..strokeWidth = 1.0
+          ..strokeCap = StrokeCap.round);
   }
 
   // ═════════ 雕塑地面投影 ═════════
@@ -312,14 +466,14 @@ class SculptPainter extends CustomPainter {
   }
 
   // ═════════ 装饰弧：外侧金轨道(带一颗流浪金珠) + 内侧玻璃短弧 ═════════
-  void _decoArcs(Canvas canvas, Offset c, double minS, bool back) {
+  /// 外轨道弧段本体（-2.6 → 0.9，非整圆）——静态，可烘层
+  void _decoArcPath(Canvas canvas, Offset c, double minS, bool back) {
     final rx2 = minS * 0.455, ry2 = rx2 * 0.36;
     const tilt2 = -0.18;
     final cosT = math.cos(tilt2), sinT = math.sin(tilt2);
     Offset pt2(double psi) => c +
         Offset(math.cos(psi) * rx2 * cosT - math.sin(psi) * ry2 * sinT,
             math.cos(psi) * rx2 * sinT + math.sin(psi) * ry2 * cosT);
-    // 外侧轨道只有一段（-2.6 → 0.9），不是整圆——避免同心圆感
     final path = Path();
     var pen = false;
     const a0 = -2.6, a1 = 0.9;
@@ -343,24 +497,101 @@ class SculptPainter extends CustomPainter {
         _strokeP
           ..strokeWidth = 0.7
           ..color = gold.withValues(alpha: back ? 0.10 : 0.20));
-    // 流浪金珠：沿外轨道缓行（与 26 节点无关，纯雕塑感）
-    if (!back) {
-      final psiB = a0 + (m.t * 0.05) % (a1 - a0);
-      _goldBead(canvas, pt2(psiB), minS * 0.009, 1.0);
-    }
-    // 垂直标记发丝线（参考图的中轴刻度）
-    if (!back) {
-      final top = c + Offset(0, -minS * 0.34);
-      canvas.drawLine(
-          top, top + Offset(0, minS * 0.055),
+  }
+
+  /// 流浪金珠：沿外轨道缓行（与节点无关，纯雕塑感）——动画，留帧绘
+  void _wanderBead(Canvas canvas, Offset c, double minS) {
+    final rx2 = minS * 0.455, ry2 = rx2 * 0.36;
+    const tilt2 = -0.18;
+    final cosT = math.cos(tilt2), sinT = math.sin(tilt2);
+    const a0 = -2.6, a1 = 0.9;
+    final psiB = a0 + (m.t * 0.05) % (a1 - a0);
+    _goldBead(
+        canvas,
+        c +
+            Offset(
+                math.cos(psiB) * rx2 * cosT - math.sin(psiB) * ry2 * sinT,
+                math.cos(psiB) * rx2 * sinT + math.sin(psiB) * ry2 * cosT),
+        minS * 0.009,
+        1.0);
+  }
+
+  /// 垂直标记发丝线 + 顶点小方（参考图的中轴刻度）——静态，可烘层
+  void _axisTick(Canvas canvas, Offset c, double minS) {
+    final top = c + Offset(0, -minS * 0.34);
+    canvas.drawLine(
+        top, top + Offset(0, minS * 0.055),
+        _strokeP
+          ..strokeWidth = 0.8
+          ..color = ink.withValues(alpha: 0.14));
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: top - Offset(0, minS * 0.008), width: 2.5, height: 2.5),
+        _fillP..color = ink.withValues(alpha: 0.20));
+  }
+
+  /// 仪表刻度：主轨道外缘上/下各一小段刻度弧 + 微读数——与 _axisTick 同风格，
+  /// 静态进烘层。alpha 极低，只为近看提供「仪器感」对位信息
+  void _gaugeTicks(Canvas canvas, Offset c, double minS) {
+    final rx = minS * 0.395 * 1.08, ry = minS * 0.395 * 0.415 * 1.08;
+    const tilt = -0.26;
+    final cosT = math.cos(tilt), sinT = math.sin(tilt);
+    Offset pt(double psi) => c +
+        Offset(math.cos(psi) * rx * cosT - math.sin(psi) * ry * sinT,
+            math.cos(psi) * rx * sinT + math.sin(psi) * ry * cosT);
+
+    void arc(double a0, double a1, int ticks, {String? l0, String? l1}) {
+      final path = Path();
+      for (var i = 0; i <= 40; i++) {
+        final p = pt(a0 + (a1 - a0) * i / 40);
+        if (i == 0) {
+          path.moveTo(p.dx, p.dy);
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      canvas.drawPath(
+          path,
           _strokeP
-            ..strokeWidth = 0.8
-            ..color = ink.withValues(alpha: 0.14));
-      canvas.drawRect(
-          Rect.fromCenter(center: top - Offset(0, minS * 0.008),
-              width: 2.5, height: 2.5),
-          _fillP..color = ink.withValues(alpha: 0.20));
+            ..strokeWidth = 0.7
+            ..color = gold.withValues(alpha: 0.17));
+      for (var i = 0; i <= ticks; i++) {
+        final major = i % 5 == 0;
+        final p = pt(a0 + (a1 - a0) * i / ticks);
+        final n = (p - c) / (p - c).distance;
+        canvas.drawLine(
+            p,
+            p - n * (major ? 5.0 : 3.0),
+            _strokeP
+              ..strokeWidth = major ? 0.8 : 0.6
+              ..color = ink.withValues(alpha: major ? 0.17 : 0.12));
+      }
+      // 端点微读数：mono 5.5px，沿外法线推出
+      void label(String s, double psi) {
+        final p = pt(psi);
+        final n = (p - c) / (p - c).distance;
+        final at = p + n * 10;
+        final tp = TextPainter(
+            text: TextSpan(
+                text: s,
+                style: TextStyle(
+                    fontFamily: 'Consolas',
+                    fontSize: 5.5,
+                    letterSpacing: 0.6,
+                    color: ink.withValues(alpha: 0.30))),
+            textDirection: TextDirection.ltr)
+          ..layout();
+        tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
+        tp.dispose();
+      }
+
+      if (l0 != null) label(l0, a0);
+      if (l1 != null) label(l1, a1);
     }
+
+    // 顶部段（后半轨道上方）+ 底部段（前下半轨道下方），各带少量刻度
+    arc(-math.pi / 2 - 0.44, -math.pi / 2 + 0.44, 10, l0: '0.00', l1: '1.00');
+    arc(math.pi / 2 - 0.32, math.pi / 2 + 0.32, 8);
   }
 
   // ═════════ 节点（26 组件 = 轨道珠）═════════
@@ -512,7 +743,10 @@ class SculptPainter extends CustomPainter {
 
   // ═════════ 尘埃（已装项退远）═════════
   void _dustDot(Canvas canvas, _N s) {
-    final tw = 0.5 + 0.5 * math.sin(m.t * 1.7 + s.p.seed * 3);
+    // reduceMotion 下停掉星尘闪烁——装饰性动效全关
+    final tw = m.reduceMotion
+        ? 0.5
+        : 0.5 + 0.5 * math.sin(m.t * 1.7 + s.p.seed * 3);
     final a = (0.10 + 0.16 * tw) * s.p.dust.x.clamp(0, 1);
     canvas.drawCircle(s.pos, 1.6 + tw,
         _fillP..color = gold.withValues(alpha: a));
@@ -612,11 +846,12 @@ class SculptPainter extends CustomPainter {
       old.sculpt != sculpt || old.m != m;
 }
 
+/// 解算槽位：字段可覆写——_solved 池每帧复用，避免逐帧小对象分配
 class _N {
-  final OrbParticle p;
-  final Offset pos;
-  final double depth;
-  final bool front;
-  final int frontIdx;
-  const _N(this.p, this.pos, this.depth, this.front, this.frontIdx);
+  OrbParticle p;
+  Offset pos;
+  double depth;
+  bool front;
+  int frontIdx;
+  _N(this.p, this.pos, this.depth, this.front, this.frontIdx);
 }

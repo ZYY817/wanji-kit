@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 
-/// 错峰入场：上移 + 淡入
+/// 错峰入场：上移 + 淡入（系统「关闭动画」时直接呈现，不散射）
 class EnterAnim extends StatelessWidget {
   final Widget child;
   final int index;
@@ -11,9 +11,12 @@ class EnterAnim extends StatelessWidget {
       this.index = 0, this.staggerMs = 110});
   @override
   Widget build(BuildContext context) {
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 620 + index * staggerMs),
+      duration: reduce
+          ? Duration.zero
+          : Duration(milliseconds: 620 + index * staggerMs),
       curve: Interval(
           index == 0 ? 0 : (index * staggerMs) / (620 + index * staggerMs),
           1, curve: Curves.easeOutCubic),
@@ -364,6 +367,44 @@ class _CaptionIconPainter extends CustomPainter {
   @override
   bool shouldRepaint(_CaptionIconPainter old) =>
       old.kind != kind || old.fg != fg || old.bg != bg;
+}
+
+/// 呼吸脉动：透明度 0.55↔1.0、1.2s 周期往返——给扫描中的「当前项名」
+/// 一点活感。系统「关闭动画」时静止呈现。
+class Pulse extends StatefulWidget {
+  final Widget child;
+  const Pulse({super.key, required this.child});
+  @override
+  State<Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<Pulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200));
+  @override
+  void initState() {
+    super.initState();
+    _c.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      return widget.child;
+    }
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _c, curve: Curves.easeInOut)
+          .drive(Tween(begin: 0.55, end: 1.0)),
+      child: widget.child,
+    );
+  }
 }
 
 /// 进度条：3px，完成段深金 / 未完成段浅灰——明暗分明

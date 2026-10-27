@@ -8,3 +8,6 @@ flutter.zip
 
 # 调试截图（仓库根目录）
 /*.png
+
+# 发布产物
+dist/

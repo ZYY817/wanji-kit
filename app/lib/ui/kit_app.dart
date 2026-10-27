@@ -41,6 +41,16 @@ class Win {
       return false;
     }
   }
+
+  /// 原生→Dart 反向回调：窗口最小化/还原。Windows 引擎在最小化时
+  /// 只发 inactive（不发 hidden），动画停表必须靠这条原生通道。
+  static void initWindowState(void Function(bool minimized) onMin) {
+    _ch.setMethodCallHandler((call) async {
+      if (call.method == 'windowState') {
+        onMin(call.arguments == 'minimized');
+      }
+    });
+  }
 }
 
 class KitApp extends StatefulWidget {
@@ -68,6 +78,7 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   bool _installing = false;
   bool? _admin;
   bool _aboutOpen = false;
+  bool _compsOpen = false;   // 组件清单弹层（与 about 同体系遮罩，互斥）
   // 修复模式：结果相位内的轻量子态（不新增页面/相位）
   bool _repairMode = false;
   final Set<String> _repairSel = {};
@@ -79,14 +90,30 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   final GlobalKey _controlsKey = GlobalKey();
   bool _maximized = false;
   double _lastExcl = -1;
+  // 停表判定：原生最小化信号 | 生命周期进入 hidden/paused/detached
+  bool _minimized = false;
+  AppLifecycleState? _lcState;
+
+  void _updatePause() {
+    final lcHidden = _lcState != null &&
+        _lcState != AppLifecycleState.resumed &&
+        _lcState != AppLifecycleState.inactive;
+    orb.setPaused(_minimized || lcHidden);
+  }
 
   @override
   void initState() {
     super.initState();
-    // 失焦/最小化 → 停表；回来继续
+    // 失焦/最小化 → 停表；回来继续。
+    // Windows 最小化只发 inactive——真正的「最小化即停」靠原生
+    // WM_SIZE 经 wanji/window 通道上报的 windowState 驱动。
     _lifecycle = AppLifecycleListener(onStateChange: (s) {
-      orb.setPaused(s != AppLifecycleState.resumed &&
-          s != AppLifecycleState.inactive);
+      _lcState = s;
+      _updatePause();
+    });
+    Win.initWindowState((min) {
+      _minimized = min;
+      _updatePause();
     });
     _load();
     // 首帧后上报顶条排除区 + 最大化态（之后由尺寸变化通知触发）
@@ -136,8 +163,8 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
     _aboutOpen = widget.about; // --about 调试：直接弹出「关于作者」
     if (widget.presetInstall.isNotEmpty) {
       _seedStatuses(widget.presetInstall);
-      setState(() {});
       orb.toResult();
+      setState(() {}); // 相位切换后重建面板（无整树帧重建，语义点手动刷新）
       _queue = _catalog!.components
           .where((c) => widget.presetInstall.contains(c.id)).toList();
       Future.delayed(const Duration(milliseconds: 1400),
@@ -146,9 +173,9 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
       _results.addAll(_demoResults());
       _applyResults();
       _incSt = !widget.exclSettings;
-      setState(() {});
       orb.toResult();
       if (widget.repair) _enterRepair();
+      setState(() {});
       if (widget.demoInstall) {
         Future.delayed(const Duration(milliseconds: 2200), () {
           _queue = _fixable.map((r) => r.component).toList();
@@ -231,23 +258,27 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   Future<void> _scan() async {
     if (orb.phase == OrbPhase.scanning) return;
     _results.clear();
+    orb.toScan();
     setState(() { _current = ''; _detail = ''; _queue = [];
         _repairMode = false; _repairSel.clear(); _failIds.clear();
         _incRt = true; _incSt = true; });
-    orb.toScan();
     await Detector.scan(_catalog!,
         onProgress: (i, _, c) {
           orb.markChecking(i);
           setState(() => _current = c.short);
         },
         onResult: (r) {
-          _results.add(r);
-          orb.markResult(r);
+          // doneCount 驱动扫描面板大数字——逐项语义刷新
+          setState(() {
+            _results.add(r);
+            orb.markResult(r);
+          });
         });
     setState(() => _current = '');
     await Future.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
     orb.toResult();
+    setState(() {});
     Elevation.isAdmin.then((a) => mounted ? setState(() => _admin = a) : null);
   }
 
@@ -278,9 +309,9 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
 
   Future<void> _startInstall(List<Component> items) async {
     if (_installing) return;
+    orb.toInstalling(items.map((c) => c.id).toList());
     setState(() { _installing = true; _queue = items; _detail = '';
         _repairMode = false; _repairSel.clear(); _failIds.clear(); });
-    orb.toInstalling(items.map((c) => c.id).toList());
     if (widget.demoInstall || widget.demoReport) {
       await _fakeInstall(items);
     } else {
@@ -291,15 +322,16 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
                 (await Detector.check(c)).status == CheckStatus.installed,
             log: log)) {
           if (!mounted) return;
+          // okCount/failCount 驱动安装面板计数——与同帧 _detail 一起刷
           setState(() {
             if (e.phase == 'start') orb.launch(e.componentId);
+            if (e.phase == 'done') orb.markInstalled(e.componentId, true);
+            if (e.phase == 'failed') {
+              orb.markInstalled(e.componentId, false);
+              _failIds.add(e.componentId);
+            }
             if (e.detail.isNotEmpty) _detail = e.detail;
           });
-          if (e.phase == 'done') orb.markInstalled(e.componentId, true);
-          if (e.phase == 'failed') {
-            orb.markInstalled(e.componentId, false);
-            _failIds.add(e.componentId);
-          }
         }
       } catch (e) {
         // 安装流中断（进程/日志/权限异常）：仍落到完成屏，failCount 记未完成的
@@ -323,7 +355,7 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
         await Future.delayed(const Duration(milliseconds: 620));
       }
       if (!mounted) return;
-      orb.markInstalled(c.id, true);
+      setState(() => orb.markInstalled(c.id, true));
       await Future.delayed(const Duration(milliseconds: 350));
     }
   }
@@ -403,26 +435,27 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
               : const SizedBox(width: 120, height: 1,
                   child: LinearProgressIndicator(
                       color: K.gold, backgroundColor: K.line, minHeight: 1)))
-          : AnimatedBuilder(
-              animation: orb,
-              builder: (_, _) => LayoutBuilder(
-                builder: (_, cst) => NotificationListener<
-                    SizeChangedLayoutNotification>(
-                  // 窗口尺寸变化（含系统最大化/还原/分屏）→ 重算顶条排除+图标
-                  onNotification: (_) {
-                    WidgetsBinding.instance.addPostFrameCallback(
-                        (_) => _syncWindowChrome());
-                    return false;
-                  },
-                  child: SizeChangedLayoutNotifier(
-                    child: Stack(children: [
-                      Positioned.fill(child: SculptStage(model: orb)),
-                      _chromeRow(),
-                      _panel(cst.maxWidth, cst.maxHeight),
-                      _bottomMeta(),
-                      if (_aboutOpen) _aboutLayer(),
-                    ]),
-                  ),
+          // 不再用 AnimatedBuilder 整树随帧重建：雕塑画层靠 CustomPaint
+          // (repaint: orb) 自己重绘，面板只在语义事件点 setState——
+          // 静稳相位满树 60fps rebuild 是弱机 CPU 的主要浪费。
+          : LayoutBuilder(
+              builder: (_, cst) => NotificationListener<
+                  SizeChangedLayoutNotification>(
+                // 窗口尺寸变化（含系统最大化/还原/分屏）→ 重算顶条排除+图标
+                onNotification: (_) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _syncWindowChrome());
+                  return false;
+                },
+                child: SizeChangedLayoutNotifier(
+                  child: Stack(children: [
+                    Positioned.fill(child: SculptStage(model: orb)),
+                    _chromeRow(),
+                    _panel(cst.maxWidth, cst.maxHeight),
+                    _bottomMeta(),
+                    if (_aboutOpen) _aboutLayer(),
+                    if (_compsOpen) _compsLayer(),
+                  ]),
                 ),
               ),
             ),
@@ -549,10 +582,18 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
       OrbPhase.installing => S.of('phaseInstall'),
       OrbPhase.complete => S.of('phaseDone'),
     };
-    return Positioned(left: 18, bottom: 14,
-        child: IgnorePointer(child: Text(
-            S.fmt('metaItems', {'n': orb.particles.length, 'phase': phaseTag}),
-            style: KT.uiMeta.copyWith(fontSize: 11, letterSpacing: 1))));
+    return Positioned(left: 18, bottom: 4,
+        // 同一行同一基线：meta 小字与「组件清单」链接按 alphabetic 基线对齐
+        child: Row(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic, children: [
+          IgnorePointer(child: Text(
+              S.fmt('metaItems', {'n': orb.particles.length, 'phase': phaseTag}),
+              style: KT.uiMeta.copyWith(fontSize: 11, letterSpacing: 1,
+                  color: K.fg2))),
+          // 组件清单入口：与右侧面板链接同一视觉（细字 hover 下划）
+          HaloLink(S.of('compList'), onTap: _openComps),
+        ]));
   }
 
   // —— 待机 ——
@@ -564,13 +605,18 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
         EnterAnim(index: 1, child: Text(S.of('idleSub'),
             style: KT.ui.copyWith(fontSize: 14, color: K.fg2,
                 letterSpacing: 1))),
-        const SizedBox(height: 30),
-        EnterAnim(index: 2, child: ArrowCta(S.of('idleCta'), onTap: _scan)),
+        const SizedBox(height: 8),
+        // 痛点钩子：一行小字，点题「游戏运行库」定位
+        EnterAnim(index: 2, child: Text(S.of('idleHook'),
+            style: KT.uiMeta.copyWith(fontSize: 12, color: K.fg3,
+                letterSpacing: 0.8))),
+        const SizedBox(height: 26),
+        EnterAnim(index: 3, child: ArrowCta(S.of('idleCta'), onTap: _scan)),
         const SizedBox(height: 18),
-        EnterAnim(index: 3, child: Text(S.of('idleHint'),
-            style: KT.uiMeta.copyWith(fontSize: 12, color: K.fg3))),
+        EnterAnim(index: 4, child: Text(S.of('idleHint'),
+            style: KT.uiMeta.copyWith(fontSize: 12, color: K.fg2))),
         const SizedBox(height: 6),
-        EnterAnim(index: 4, child: Row(children: [
+        EnterAnim(index: 5, child: Row(children: [
           HaloLink(S.of('about'), onTap: _openAbout),
         ])),
       ]);
@@ -592,10 +638,12 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
               fontSize: 20, color: K.fg2)),
         ]),
         const SizedBox(height: 10),
-        SizedBox(height: 22, child: Text(_current,
+        // 当前项名：▸ 点前缀 + 呼吸脉动——扫描中一眼可感「在动」
+        SizedBox(height: 22, child: Pulse(child: Text(
+            _current.isEmpty ? '' : '▸ $_current',
             maxLines: 1, overflow: TextOverflow.ellipsis,
             style: KT.ui.copyWith(fontSize: 15, color: K.ink,
-                fontWeight: FontWeight.w500))),
+                fontWeight: FontWeight.w500)))),
         const SizedBox(height: 10),
         HairlineProgress(frac: orb.particles.isEmpty
             ? 0 : orb.doneCount / orb.particles.length),
@@ -942,7 +990,7 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
 
   // ═══════════════ 关于作者 · 遮罩弹层 ═══════════════
 
-  void _openAbout() => setState(() => _aboutOpen = true);
+  void _openAbout() => setState(() { _aboutOpen = true; _compsOpen = false; });
   void _closeAbout() => setState(() => _aboutOpen = false);
 
   /// 系统默认浏览器打开链接（与手动指引同一通道）
@@ -1049,6 +1097,230 @@ class _KitAppState extends State<KitApp> with TickerProviderStateMixin {
   /// 发丝分隔线
   Widget _hairline() => Container(height: 0.7,
       color: K.line.withValues(alpha: 0.85));
+
+  // ═══════════════ 组件清单 · 遮罩弹层（与 about 同体系）═══════════════
+
+  void _openComps() => setState(() { _compsOpen = true; _aboutOpen = false; });
+  void _closeComps() => setState(() => _compsOpen = false);
+
+  /// 米白遮罩：点遮罩 / Esc / × 三关；淡入 + 轻微上移，尊重 disableAnimations
+  Widget _compsLayer() {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    return Positioned.fill(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        builder: (_, v, _) => Focus(
+          autofocus: true,
+          onKeyEvent: (_, e) {
+            if (e is KeyDownEvent &&
+                e.logicalKey == LogicalKeyboardKey.escape) {
+              _closeComps();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Stack(children: [
+            Positioned.fill(child: GestureDetector(
+              onTap: _closeComps,
+              child: Container(
+                  color: K.cream.withValues(alpha: 0.74 * v)),
+            )),
+            Center(child: Transform.translate(
+              offset: Offset(0, 10 * (1 - v)),
+              child: Opacity(opacity: v, child: _compsCard()),
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// category → 组头文案；catalog 里还有 runtime/windows 两类，给独立组名，
+  /// 未识别的新 category 一律归「其他」
+  String _catLabel(String cat) => switch (cat) {
+        'vcredist' => S.of('catVcredist'),
+        'dotnet' => S.of('catDotnet'),
+        'directx' => S.of('catDirectx'),
+        'middleware' => S.of('catMiddleware'),
+        'setting' => S.of('catSetting'),
+        'runtime' => S.of('catRuntime'),
+        'windows' => S.of('catWindows'),
+        _ => S.of('catOther'),
+      };
+
+  /// 行内状态字/色（仅扫描后显示）：设置项缺失叫「待优化」，手动项叫「需手动」
+  ({String t, Color c}) _compStatus(OrbParticle p) {
+    final comp = p.component;
+    final manual = comp != null && !comp.autoInstall;
+    return switch (p.status) {
+      PStatus.installed => (t: S.of('rowInstalled'), c: K.installed),
+      PStatus.outdated => manual
+          ? (t: S.of('rowManual'), c: K.manualTx)
+          : (t: S.of('rowOutdated'), c: K.amberTx),
+      PStatus.missing => manual
+          ? (t: S.of('rowManual'), c: K.manualTx)
+          : (t: comp?.isSetting == true ? S.of('rowOff') : S.of('rowMissing'),
+             c: K.missingTx),
+      PStatus.checking => (t: S.of('rowChecking'), c: K.amberTx),
+      _ => (t: '—', c: K.fg3),
+    };
+  }
+
+  /// 行首状态点：已装=金珠实心 / 缺失(待优化)=赤陶环 / 过旧=琥珀点 /
+  /// 手动缺失=灰环 / 检测中=琥珀环 / 未检=无
+  Widget _compDot(OrbParticle p) {
+    final manual = p.component != null && !p.component!.autoInstall;
+    final style = switch (p.status) {
+      PStatus.installed => (fill: K.gold, ring: Colors.transparent),
+      PStatus.outdated => (fill: K.amber, ring: Colors.transparent),
+      PStatus.missing => (fill: Colors.transparent,
+          ring: manual ? K.manualTx : K.missing),
+      PStatus.checking => (fill: Colors.transparent, ring: K.amber),
+      _ => (fill: Colors.transparent, ring: Colors.transparent),
+    };
+    return Container(width: 7, height: 7,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: style.fill,
+          border: style.ring == Colors.transparent
+              ? null
+              : Border.all(color: style.ring, width: 1.4),
+        ));
+  }
+
+  Widget _compRow(int i, OrbParticle p, bool scanned) {
+    final c = p.component!;
+    final st = scanned ? _compStatus(p) : null;
+    return SizedBox(height: 31,
+      // 三列定宽严格竖直对齐：序号 28 左齐 | 大小 56 右齐 | 渠道 pill 64 定宽居中
+      child: Row(children: [
+        SizedBox(width: 20, child: scanned
+            ? _compDot(p) : null),
+        SizedBox(width: 28, child: Text(
+            (i + 1).toString().padLeft(2, '0'),
+            style: KT.mono.copyWith(fontSize: 9.5, letterSpacing: 0.8))),
+        Expanded(child: Text(c.name,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: KT.ui.copyWith(fontSize: 15,
+                fontWeight: FontWeight.w500))),
+        const SizedBox(width: 8),
+        SizedBox(width: 56, child: Text(
+            c.sizeMb > 0 ? '${c.sizeMb} MB' : '—',
+            textAlign: TextAlign.right,
+            style: KT.ui.copyWith(fontSize: 13, color: K.fg2))),
+        const SizedBox(width: 10),
+        // 渠道标签：winget/download/command 任一即「自动」，仅 manual 为「手动」；
+        // 定宽 64 —— EN「MANUAL」12px 不折行，列缘竖直对齐
+        SizedBox(width: 64, child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 4, vertical: 1.5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+                color: K.fg3.withValues(alpha: 0.55), width: 0.8),
+          ),
+          child: Text(c.autoInstall ? S.of('chAuto') : S.of('chManual'),
+              textAlign: TextAlign.center,
+              maxLines: 1, softWrap: false,
+              style: KT.uiMeta.copyWith(fontSize: 12, height: 1.15,
+                  letterSpacing: 0.8, color: K.fg2)),
+        )),
+        const SizedBox(width: 8),
+        SizedBox(width: 64, child: st == null ? null : Text(st.t,
+            textAlign: TextAlign.right,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: KT.ui.copyWith(fontSize: 12,
+                fontWeight: FontWeight.w600, color: st.c))),
+      ]),
+    );
+  }
+
+  Widget _compsCard() {
+    final size = MediaQuery.sizeOf(context);
+    final compact = size.height < 620;
+    final cardH = (compact ? 440.0 : 480.0)
+        .clamp(260.0, size.height - 40).toDouble();
+    final cardW = 588.0.clamp(320.0, size.width - 48).toDouble();
+    final comps = _catalog!.components;
+    // 扫描过后：行首状态点 + 右端状态字（数据与轨道珠同源 orb.particles）
+    final scanned = orb.particles
+        .any((p) => p.status != PStatus.pending);
+    // 按 catalog 顺序分组（组序 = 类别首次出现序），序号保持目录序 01-32
+    final order = <String>[];
+    final groups = <String, List<int>>{};
+    for (var i = 0; i < comps.length; i++) {
+      final cat = comps[i].category;
+      groups.putIfAbsent(cat, () {
+        order.add(cat);
+        return <int>[];
+      }).add(i);
+    }
+    final rows = <Widget>[];
+    for (final cat in order) {
+      final idxs = groups[cat]!;
+      rows.add(Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 3),
+        child: Row(children: [
+          Text(_catLabel(cat), style: KT.uiMeta.copyWith(
+              fontSize: 10.5, letterSpacing: 2.0, color: K.fg2,
+              fontWeight: FontWeight.w600)),
+          const SizedBox(width: 10),
+          Expanded(child: _hairline()),
+          const SizedBox(width: 8),
+          Text('${idxs.length}', style: KT.mono.copyWith(
+              fontSize: 9, letterSpacing: 1)),
+        ]),
+      ));
+      for (var k = 0; k < idxs.length; k++) {
+        final i = idxs[k];
+        rows.add(_compRow(i, orb.particles[i], scanned));
+      }
+    }
+    return Container(
+      width: cardW, height: cardH,
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF8F1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: K.line.withValues(alpha: 0.8), width: 0.7),
+        boxShadow: [BoxShadow(
+            color: K.shadow.withValues(alpha: 0.38),
+            blurRadius: 40, offset: const Offset(0, 18))],
+      ),
+      child: Column(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(S.of('compTitle'), style: KT.ui.copyWith(
+                fontSize: 20, fontWeight: FontWeight.w700,
+                letterSpacing: 1)),
+            const SizedBox(height: 4),
+            // mono 副标：点题「游戏运行库」定位
+            Text(S.of('compSub'), style: KT.mono.copyWith(
+                fontSize: 9, letterSpacing: 2.2, color: K.fg3)),
+          ]),
+          const Spacer(),
+          AboutCloseX(onTap: _closeComps),
+        ]),
+        const SizedBox(height: 10),
+        _hairline(),
+        // 滚动区右侧留 12px——桌面端 Material 自动挂的细滚动条不压内容列
+        Expanded(child: SingleChildScrollView(
+            padding: const EdgeInsets.only(right: 12),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: rows))),
+        _hairline(),
+        Padding(padding: const EdgeInsets.only(top: 8),
+            child: Row(children: [
+              Text(S.fmt('compTotal', {'n': comps.length}),
+                  style: KT.uiMeta.copyWith(fontSize: 11,
+                      letterSpacing: 1, color: K.fg2)),
+            ])),
+      ]),
+    );
+  }
 
   /// 手动项：打开官方指引页（ms-settings / https 均走系统协议）
   void _openManual(Component c) {

@@ -107,6 +107,26 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+
+    case WM_SIZE:
+      // Dart's AppLifecycleListener never delivers 'hidden' on Windows
+      // minimize (engine only emits inactive); forward the real window
+      // state so the animation ticker can truly stop while minimized.
+      if (window_channel_) {
+        const char* state = nullptr;
+        if (wparam == SIZE_MINIMIZED) {
+          state = "minimized";
+        } else if (wparam == SIZE_RESTORED || wparam == SIZE_MAXIMIZED) {
+          state = "restored";
+        }
+        if (state != nullptr) {
+          window_channel_->InvokeMethod(
+              "windowState",
+              std::make_unique<flutter::EncodableValue>(
+                  flutter::EncodableValue(state)));
+        }
+      }
+      break;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

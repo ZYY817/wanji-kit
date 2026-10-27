@@ -27,17 +27,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  // Clamp the initial size to the work area: 1280x720 DIP overflows on
-  // small / high-scale laptops (e.g. 1366x768 at 125%). SPI_GETWORKAREA
-  // returns physical px; divide by the DPI scale to get DIPs, then min().
+  // Initial size: ~72% of work-area width, ~16:10-ish, capped and
+  // centered - looks deliberate on any screen instead of hugging
+  // the top-left corner. SPI_GETWORKAREA is physical px; /DPI = DIPs.
   RECT work{0, 0, 0, 0};
   ::SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
   const double dip_scale = ::GetDpiForSystem() / 96.0;
-  const int max_w = static_cast<int>((work.right - work.left) / dip_scale) - 40;
-  const int max_h = static_cast<int>((work.bottom - work.top) / dip_scale) - 40;
-  const int init_w = max_w > 0 ? (std::min)(1280, max_w) : 1280;
-  const int init_h = max_h > 0 ? (std::min)(720, max_h) : 720;
+  const int work_w = static_cast<int>((work.right - work.left) / dip_scale);
+  const int work_h = static_cast<int>((work.bottom - work.top) / dip_scale);
+  const int max_w = work_w - 80, max_h = work_h - 80;
+  int init_w = max_w > 0 ? (std::min)(1360,
+      (std::max)(980, static_cast<int>(work_w * 0.72))) : 1280;
+  init_w = (std::min)(init_w, max_w > 0 ? max_w : init_w);
+  int init_h = static_cast<int>(init_w * 0.60);
+  init_h = max_h > 0 ? (std::min)(init_h, max_h) : init_h;
+  Win32Window::Point origin(
+      (std::max)(0, (work_w - init_w) / 2),
+      (std::max)(0, (work_h - init_h) / 2));
   Win32Window::Size size(init_w, init_h);
   if (!window.Create(L"\u8FD0\u884C\u5E93\u4F53\u68C0 \u00B7 ZYY817", origin, size)) {
     return EXIT_FAILURE;

@@ -1,5 +1,6 @@
 #include "win32_window.h"
 
+#include <algorithm>
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <flutter_windows.h>
@@ -214,21 +215,31 @@ Win32Window::MessageHandler(HWND hwnd,
       return HitTestForScreenPoint(hwnd, lparam);
 
     case WM_GETMINMAXINFO: {
-      // Enforce the 890x560 minimum layout (DIP -> physical px via DPI).
+      // Enforce the 890x560 minimum layout (DIP -> physical px via DPI),
+      // but never above the monitor work area: on small/high-scale
+      // laptops (e.g. 1366x768 at 150%) an unclamped 890x560 DIP minimum
+      // (1335x840 px) exceeds the screen and the window can never fit.
       auto info = reinterpret_cast<MINMAXINFO*>(lparam);
       const UINT dpi = GetDpiForWindow(hwnd);
-      info->ptMinTrackSize.x = MulDiv(890, dpi, 96);
-      info->ptMinTrackSize.y = MulDiv(560, dpi, 96);
+      const LONG min_w = MulDiv(890, dpi, 96);
+      const LONG min_h = MulDiv(560, dpi, 96);
       // A borderless window maximizes over the whole screen (covering the
       // taskbar); clamp ptMaxSize / ptMaxPosition to the monitor work area.
       HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
       MONITORINFO mi{sizeof(mi)};
+      LONG work_w = 0, work_h = 0;
       if (GetMonitorInfo(monitor, &mi)) {
+        work_w = mi.rcWork.right - mi.rcWork.left;
+        work_h = mi.rcWork.bottom - mi.rcWork.top;
         info->ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
         info->ptMaxPosition.y = mi.rcWork.top - mi.rcMonitor.top;
-        info->ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
-        info->ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
+        info->ptMaxSize.x = work_w;
+        info->ptMaxSize.y = work_h;
       }
+      info->ptMinTrackSize.x =
+          work_w > 0 ? (std::min)(min_w, work_w) : min_w;
+      info->ptMinTrackSize.y =
+          work_h > 0 ? (std::min)(min_h, work_h) : min_h;
       return 0;
     }
 

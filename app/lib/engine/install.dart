@@ -60,11 +60,12 @@ class Installer {
           winget && c.install.winget != null) {
         yield InstallEvent(c.id, 'installing', 'winget ${c.install.winget}');
         // --force：修复模式走同一通道，已装包强制重装；全新安装时无副作用
+        // 300s 上限：winget source 挂起时不会把后续队列一起冻结
         final code = await _run('winget', [
           'install', '--id', c.install.winget!,
           '--silent', '--force', '--accept-source-agreements',
           '--accept-package-agreements', '--disable-interactivity'
-        ], log);
+        ], log, timeout: const Duration(seconds: 300));
         outcome = _mapExit(code);
         detail = S.fmt('evWingetExit', {'code': code});
         await log.write('winget_done', {'id': c.id, 'exit': code});
